@@ -21,7 +21,7 @@ COPY app/ /srv/app/
 RUN python app/get_fonts.py || echo "글꼴 내려받기 실패 - 기본 글꼴로 진행합니다"
 
 # 자세 인식 모델도 첫 실행 때 받으므로 미리 받아 둔다
-RUN python -c "import sys; sys.path.insert(0, 'app'); import reference as rf; rf.model_path('app')" \
+RUN python -c "import sys; sys.path.insert(0, 'app'); import reference as rf; rf.ensure_model('app')" \
     || echo "자세 모델은 첫 요청 때 받습니다"
 
 ENV HOST=0.0.0.0

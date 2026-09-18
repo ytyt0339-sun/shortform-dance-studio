@@ -139,6 +139,58 @@ def score_check(job):
             "min": MIN_SCORE, "warn": WARN_SCORE}
 
 
+# ---- 사용량 제한 -------------------------------------------------------------
+# 키 하나로 여러 사람이 쓰므로, 한 사람이 계속 만들면 그대로 비용이 된다.
+# 세션(브라우저) 단위로 하루 몇 편까지만 만들 수 있게 막는다.
+DAILY_VIDEOS = int(os.environ.get("DAILY_VIDEOS") or 2)   # 하루에 만들 수 있는 편수
+REDO_LIMIT = int(os.environ.get("REDO_LIMIT") or 1)       # 한 편을 다시 만들 수 있는 횟수
+USAGE_FILE = RUNS / "_usage.json"
+_USAGE_LOCK = threading.Lock()
+
+
+def _today():
+    return time.strftime("%Y-%m-%d")
+
+
+def _usage_all():
+    try:
+        return json.loads(USAGE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def usage_of(who):
+    """오늘 이 사람이 만든 편수. 날짜가 바뀌면 0 부터 다시 센다."""
+    u = _usage_all().get(who) or {}
+    if u.get("date") != _today():
+        return {"date": _today(), "videos": 0}
+    return {"date": u["date"], "videos": int(u.get("videos", 0))}
+
+
+def usage_bump(who, n=1):
+    """만들기 시작할 때 +1, 실패하면 -1 로 되돌린다."""
+    with _USAGE_LOCK:
+        all_ = _usage_all()
+        u = all_.get(who) or {}
+        if u.get("date") != _today():
+            u = {"date": _today(), "videos": 0}
+        u["videos"] = max(0, int(u.get("videos", 0)) + n)
+        all_[who] = u
+        # 어제 것들은 버린다 (파일이 계속 커지지 않게)
+        all_ = {k: v for k, v in all_.items() if v.get("date") == _today()}
+        tmp = USAGE_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(all_, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(USAGE_FILE)
+        return u
+
+
+@app.get("/api/quota")
+def quota():
+    u = usage_of(sid())
+    return {"made": u["videos"], "limit": DAILY_VIDEOS,
+            "left": max(0, DAILY_VIDEOS - u["videos"]), "redo": REDO_LIMIT}
+
+
 def job_dir(jid):
     """작업 폴더. 남의 작업은 없는 것처럼 취급한다."""
     d = RUNS / jid
@@ -280,7 +332,7 @@ def blank_job():
         "poster_font": "", "poster_bar": True, "poster_image": None,
         "poster_mode": "bake", "ending_baked": None,
         "cuts": [], "ending_raw": None, "ending": None, "result": None,
-        "spent": 0.0,
+        "spent": 0.0, "render_n": 0,
     }
 
 
@@ -1064,10 +1116,35 @@ def render(jid: str, with_ending: str = Form("true"), confirm_low: str = Form("f
     chk = score_check(job)
     if chk and chk["level"] == "block" and confirm_low != "true":
         raise HTTPException(409, {"low_score": chk})
+
+    # 같은 영상을 몇 번이나 다시 만들었는지, 오늘 몇 편을 만들었는지 본다
+    done_n = int(job.get("render_n", 0))
+    if done_n > REDO_LIMIT:
+        raise HTTPException(429, "이 영상은 다시 만들기를 %d번까지 할 수 있습니다. "
+                                 "자막·글꼴·카메라는 다시 만들지 않아도 바꿀 수 있습니다."
+                                 % REDO_LIMIT)
+    me = sid()
+    if usage_of(me)["videos"] >= DAILY_VIDEOS:
+        raise HTTPException(429, "오늘 만들 수 있는 %d편을 다 쓰셨습니다. "
+                                 "내일 다시 이용해 주세요." % DAILY_VIDEOS)
+    usage_bump(me, 1)
     want_ending = (with_ending == "true")
 
     def work():
+        try:
+            _render(jid, d, want_ending)
+        except Exception:
+            usage_bump(me, -1)      # 실패한 것은 쓴 것으로 치지 않는다
+            raise
+
+    return run_task(jid, "영상 만들기", work)
+
+
+def _render(jid, d, want_ending):
+    if True:
         j = read_job(jid)
+        j["render_n"] = int(j.get("render_n", 0)) + 1
+        write_job(jid, j)
         key = d / j["keycut"]
 
         secs = pl._dur(d / j["plate"])
@@ -1108,8 +1185,6 @@ def render(jid: str, with_ending: str = Form("true"), confirm_low: str = Form("f
             task_set(jid, msg="자막 굽는 중")
         apply_subs(j, d)
         write_job(jid, j)
-
-    return run_task(jid, "영상 만들기", work)
 
 
 class NoCacheStatic(StaticFiles):
