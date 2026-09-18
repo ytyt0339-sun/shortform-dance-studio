@@ -1,6 +1,7 @@
 app/studio_runs/
 app/runs/
 app/fonts/
+app/fonts_cache.json
 app/pose_landmarker_full.task
 app/static/
 _manual_assets/

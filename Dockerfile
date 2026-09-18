@@ -4,9 +4,11 @@ FROM python:3.11-slim
 
 # ffmpeg: 영상 자르기·합치기·자막 굽기에 쓴다
 # libgl1, libglib2.0-0: opencv 가 요구한다
+# libegl1, libgles2: mediapipe 가 자세 인식을 시작할 때 찾는다.
+#   없으면 업로드는 되는데 채점에서 'libEGL.so.1 없음' 으로 실패한다 (실제로 겪었다)
 # fonts-nanum: 한글 기본 글꼴 (사용자가 글꼴을 안 고를 때 쓰는 기본값)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ffmpeg libgl1 libglib2.0-0 fonts-nanum \
+        ffmpeg libgl1 libglib2.0-0 libegl1 libgles2 fonts-nanum \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv
