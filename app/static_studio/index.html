@@ -1,0 +1,1217 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>캐릭터 댄스 스튜디오</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --accent:#6B4EFF; --accent-soft:#EEEAFF;
+  --ground:#F1F5F9; --surface:#fff; --surface-2:#F8FAFC;
+  --ink:#0B1331; --ink-2:#3A4363; --muted:#666B7E; --line:#E0E3EB;
+  --ok:#0E9F6E; --ok-bg:#E7F7F0; --err:#D64550; --err-bg:#FDECEE;
+  --sans:'Gowun Dodum','Pretendard','Malgun Gothic',system-ui,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:14.5px;line-height:1.65;-webkit-font-smoothing:antialiased}
+.mono{font-family:var(--mono)}
+.wrap{max-width:1060px;margin:0 auto;padding:26px 20px 90px}
+
+header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:20px}
+h1{font-size:21px;margin:0;letter-spacing:-.02em}
+header .sub{color:var(--muted);font-size:13px}
+header .spend{margin-left:auto;font-family:var(--mono);font-size:12.5px;color:var(--accent);
+  background:var(--accent-soft);padding:5px 11px;border-radius:999px}
+
+.bar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:20px}
+.bar button{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--surface);
+  color:var(--ink-2);padding:6px 12px;border-radius:999px;cursor:pointer}
+.bar button:hover{border-color:var(--accent);color:var(--accent)}
+.bar button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+  padding:22px;margin-bottom:14px}
+.card.off{opacity:.5}
+.hd{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.n{width:23px;height:23px;border-radius:8px;background:var(--accent);color:#fff;flex:none;
+  display:grid;place-items:center;font-family:var(--mono);font-size:11.5px}
+.card.off .n{background:var(--line);color:var(--muted)}
+.card.done .n{background:var(--ok)}
+h2{font-size:15px;margin:0;letter-spacing:-.01em}
+.hint{color:var(--muted);font-size:12.5px;margin:5px 0 0}
+.hr{height:1px;background:var(--line);margin:16px 0}
+
+label.lbl{display:block;font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px}
+.opt{font-weight:400;color:var(--muted)}
+input[type=text],textarea{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);
+  border-radius:10px;background:var(--surface);color:var(--ink)}
+textarea{min-height:76px;resize:vertical}
+input[type=text]:focus,textarea:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+input[type=file]{font:inherit;font-size:12.5px;width:100%}
+select{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);
+  border-radius:10px;background:var(--surface);color:var(--ink)}
+input[type=color]{width:100%;height:42px;padding:3px;border:1px solid var(--line);
+  border-radius:10px;background:var(--surface);cursor:pointer}
+
+/* 글꼴을 이름만 보면 못 고른다. 각 항목을 그 글꼴로 직접 그린다. */
+.fontpick{position:relative}
+.fontbtn{width:100%;text-align:left;font:inherit;font-size:15px;padding:9px 12px;
+  border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);
+  cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.fontbtn:hover{border-color:var(--accent)}
+.fontbtn .cap{font-size:11px;color:var(--muted);font-family:var(--mono);flex:none}
+.fontlist{display:none;position:absolute;z-index:30;top:calc(100% + 6px);left:0;right:0;
+  max-height:340px;overflow-y:auto;background:var(--surface);border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 12px 32px rgba(11,19,49,.14);padding:5px}
+.fontlist.open{display:block}
+.fontlist .it{padding:8px 11px;border-radius:8px;cursor:pointer}
+.fontlist .it:hover{background:var(--surface-2)}
+.fontlist .it.on{background:var(--accent-soft)}
+.fontlist .it .nm{font-family:var(--mono);font-size:10.5px;color:var(--muted);
+  letter-spacing:0;margin-bottom:1px}
+.fontlist .it .sp{font-size:17px;line-height:1.35;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+
+.btn{font:inherit;font-weight:600;font-size:13.5px;border:0;background:var(--accent);color:#fff;
+  padding:10px 18px;border-radius:10px;cursor:pointer;white-space:nowrap}
+.btn:hover{filter:brightness(1.07)}
+.btn:disabled{background:var(--line);color:var(--muted);cursor:not-allowed;filter:none}
+.btn.sec{background:var(--surface);color:var(--ink-2);border:1px solid var(--line)}
+.btn.sec:hover{border-color:var(--accent);color:var(--accent);filter:none}
+.btn.ok{background:var(--ok)}
+.btn.sm{padding:6px 12px;font-size:12.5px}
+.btn.big{padding:13px 26px;font-size:15px}
+
+.msg{display:none;margin-top:12px;padding:10px 13px;border-radius:9px;font-size:13px;
+  background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2)}
+.msg.show{display:block}
+.msg.ok{background:var(--ok-bg);border-color:#BDE9D6;color:#0A6E4D}
+.msg.err{background:var(--err-bg);border-color:#F6C9CE;color:#9B2C36}
+
+/* 같은 캐릭터를 두 화풍으로 그려 둔 예시. 고르기 전에 결과를 먼저 본다. */
+.samples{display:flex;gap:10px;margin:10px 0 0}
+.samples figure{margin:0;flex:1;max-width:150px}
+.samples img{width:100%;border:1px solid var(--line);border-radius:10px;display:block}
+.samples figcaption{font-size:12px;color:var(--muted);margin-top:5px;text-align:center}
+.prev{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;align-items:flex-start}
+.prev img,.prev video{border:1px solid var(--line);border-radius:10px;background:var(--surface-2);
+  display:block;max-width:100%}
+.shot{width:210px}
+.tag{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:999px;
+  background:var(--surface-2);border:1px solid var(--line);color:var(--muted)}
+.tag.ok{background:var(--ok-bg);border-color:#BDE9D6;color:#0A6E4D}
+.tag.no{background:var(--err-bg);border-color:#F6C9CE;color:#9B2C36}
+.chk{font-size:12.5px;color:var(--muted);margin:8px 0 0;padding-left:17px;text-indent:-17px}
+.warn{margin-top:12px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.6}
+.warn.block{background:var(--err-bg);border:1px solid #F6C9CE;color:#9B2C36}
+.warn.warn{background:#FFF6E5;border:1px solid #F5DCA8;color:#8A5A12}
+.warn b{font-weight:700}
+.segs{display:flex;flex-direction:column;gap:7px;margin-top:12px}
+.seg{display:flex;align-items:center;gap:12px;padding:10px 13px;border:1px solid var(--line);
+  border-radius:10px;background:var(--surface);cursor:pointer;text-align:left;font:inherit;
+  width:100%}
+.seg:hover{border-color:var(--accent)}
+.seg.on{border-color:var(--accent);background:var(--accent-soft)}
+.seg .sc{font-family:var(--mono);font-size:15px;font-weight:600;flex:none;width:56px}
+.seg .tm{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);flex:none;width:112px}
+.seg .st{font-size:12.5px;color:var(--muted);flex:1}
+.seg .best{font-size:11px;color:var(--accent);font-weight:700;flex:none}
+.warn ul{margin:7px 0 0;padding-left:18px}
+.warn li{margin:2px 0}
+.final{width:290px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:9px;margin-top:12px}
+.grid video{width:100%;border:1px solid var(--line);border-radius:8px}
+table.subs{width:100%;border-collapse:collapse;margin-top:14px;font-size:13px}
+table.subs th{text-align:left;font-size:11.5px;color:var(--muted);font-weight:600;
+  padding:0 8px 6px;border-bottom:1px solid var(--line)}
+table.subs td{padding:4px 6px;border-bottom:1px solid var(--line)}
+table.subs input[type=number]{width:72px;font:inherit;font-family:var(--mono);font-size:12px;
+  padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);
+  color:var(--ink)}
+table.subs input[type=text]{padding:6px 10px}
+table.subs .del{border:0;background:none;color:var(--muted);cursor:pointer;font-size:15px;
+  padding:0 6px}
+table.subs .del:hover{color:var(--err)}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>캐릭터 댄스 스튜디오</h1>
+  <span class="sub">캐릭터 · 배경 · 춤 영상 · 음악을 넣으면 세로 숏폼이 나옵니다</span>
+  <span class="sub mono" id="ver" style="font-size:11px"></span>
+</header>
+
+<div class="bar" id="bar"></div>
+
+<!-- 1 캐릭터 -->
+<div class="card" id="c1">
+  <div class="hd"><span class="n">1</span><h2>캐릭터</h2></div>
+  <div class="samples">
+    <figure><img src="/sample/style_3d.jpg" alt="3D 피규어 화풍으로 그려진 사자 캐릭터">
+      <figcaption>3D 피규어</figcaption></figure>
+    <figure><img src="/sample/style_doodle.jpg" alt="손그림 낙서체로 그려진 같은 사자 캐릭터">
+      <figcaption>손그림 낙서체</figcaption></figure>
+  </div>
+
+  <label class="lbl">화풍</label>
+  <select id="styleMode"></select>
+  <p class="hint" id="styleNote"></p>
+
+  <label class="lbl">캐릭터 그림</label>
+  <input type="file" id="charFile" accept="image/png,image/jpeg,image/webp">
+
+  <div id="charFixRow">
+    <label class="lbl" for="charFix">고칠 점 <span class="opt">— 선택</span></label>
+    <input type="text" id="charFix" placeholder="예: 팔을 몸에서 더 떼어줘 · 얼굴을 더 크게 · 모자는 빼줘">
+    <p class="hint">적어두면 다듬을 때 이 내용을 먼저 반영합니다.
+      매번 <b>처음 올린 그림에서 새로 다듬으니</b> 여러 번 눌러도 그림이 망가지지 않습니다.</p>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <button class="btn sec" id="charClean">그림 다듬기</button>
+    <span class="hint" style="margin:0" id="charCleanNote">낙서나 스케치를 올렸다면 눌러주세요.
+      원본의 느낌은 두고 <b>팔다리만 또렷하게</b> 정리합니다 — 그래야 동작이 안 뭉개집니다.</span>
+  </div>
+  <div class="prev" id="charPrev"></div>
+  <div class="msg" id="charMsg"></div>
+</div>
+
+<!-- 2 배경 + 키컷 -->
+<div class="card off" id="c2">
+  <div class="hd"><span class="n">2</span><h2>배경</h2></div>
+  <p class="hint">캐릭터를 어디에 세울지 적어주세요. 배경만 따로 만들어 얹는 게 아니라
+    <b>캐릭터를 그 장면 안에 다시 그립니다.</b> 그래야 빛과 그림자가 맞아 합성한 티가 안 납니다.</p>
+  <div class="row" style="align-items:flex-start">
+    <div style="flex:2;min-width:250px">
+      <label class="lbl">배경 설명</label>
+      <textarea id="bgPrompt" placeholder="햇빛 드는 대학교 캠퍼스 광장, 붉은 벽돌 건물과 나무"></textarea>
+    </div>
+    <div style="flex:1.2;min-width:200px">
+      <label class="lbl">장소 사진 <span class="opt">— 선택</span></label>
+      <input type="file" id="bgPhoto" accept="image/png,image/jpeg,image/webp">
+      <p class="hint">사진을 올리면 <b>그 장소를 그대로 옮겨 그립니다.</b>
+        실제 캠퍼스나 건물이면 글로 쓰는 것보다 훨씬 정확합니다.
+        사진 속 사람과 글자는 빼고 그립니다.</p>
+      <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <img id="bgPhotoImg" style="display:none;height:84px;border:1px solid var(--line);border-radius:8px" alt="">
+        <button class="btn sec sm" id="bgPhotoClear" style="display:none">사진 빼기</button>
+      </div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <button class="btn" id="bgGo">키컷 만들기</button>
+    <span class="hint" style="margin:0">30초쯤 걸립니다 · 설명이나 사진 중 하나만 있어도 됩니다</span>
+  </div>
+  <div class="msg" id="bgMsg"></div>
+</div>
+
+<!-- 3 키컷 확인 -->
+<div class="card off" id="c3">
+  <div class="hd"><span class="n">3</span><h2>키컷 확인</h2></div>
+  <p class="hint">이 그림이 영상 전체의 기준이 됩니다. <b>마음에 들 때까지 다시 만드세요.</b>
+    승인해야 영상 생성으로 넘어갑니다.</p>
+  <div class="prev" id="keyPrev"></div>
+  <div id="keyChecks"></div>
+  <div class="row" style="align-items:flex-start;margin-top:6px">
+    <div style="flex:1;min-width:230px">
+      <label class="lbl" for="keyFixChar">캐릭터에서 고칠 점 <span class="opt">— 선택</span></label>
+      <input type="text" id="keyFixChar" placeholder="예: 정면을 보게 · 팔을 몸에서 떼고 · 웃는 얼굴로 · 모자는 빼줘">
+    </div>
+    <div style="flex:1;min-width:230px">
+      <label class="lbl" for="keyFixBg">배경에서 고칠 점 <span class="opt">— 선택</span></label>
+      <input type="text" id="keyFixBg" placeholder="예: 밤 말고 낮으로 · 사람들은 빼줘 · 건물을 더 멀리">
+    </div>
+  </div>
+  <p class="hint">비워두면 같은 조건으로 다시 뽑습니다. 적으면 그 부분을 고쳐서 그립니다.</p>
+  <div class="row" style="margin-top:14px">
+    <button class="btn ok" id="keyOk">이걸로 진행</button>
+    <button class="btn sec" id="keyAgain">다시 만들기</button>
+    <button class="btn sec sm" id="keyUndo" style="display:none">승인 취소</button>
+  </div>
+  <div class="msg" id="keyMsg"></div>
+</div>
+
+<!-- 4 레퍼런스 + 음악 -->
+<div class="card off" id="c4">
+  <div class="hd"><span class="n">4</span><h2>춤 영상과 음악</h2></div>
+  <p class="hint"><b>한 사람만 나오는</b> 춤 영상을 올려주세요. 여러 명이면 받지 않습니다 —
+    Kling이 누구를 따라갈지 못 정해서 결과가 무너집니다. 가로 영상은 인물을 찾아 세로로 잘라냅니다.</p>
+  <div class="row">
+    <div style="flex:2;min-width:230px">
+      <label class="lbl">춤 영상</label>
+      <input type="file" id="refFile" accept="video/*">
+    </div>
+    <div style="flex:2;min-width:230px">
+      <label class="lbl">음악</label>
+      <select id="musSrc">
+        <option value="reference">춤 영상의 소리 그대로 (박자가 정확히 맞음)</option>
+        <option value="file">음악 파일 따로 올리기</option>
+        <option value="none">소리 없음</option>
+      </select>
+      <input type="file" id="musFile" accept="audio/*" style="display:none;margin-top:8px">
+    </div>
+  </div>
+  <div class="prev" id="refPrev"></div>
+  <div id="scoreWarn"></div>
+
+  <div id="segBox" style="display:none">
+    <div class="hr"></div>
+    <label class="lbl">쓸 구간 <span class="opt">— 지금은 맨 앞부터 씁니다</span></label>
+    <p class="hint">영상을 훑어 <b>점수가 높은 구간을 추천</b>해드립니다.
+      몇 번이든 다시 훑고, 얼마든지 바꿔도 됩니다.</p>
+    <div class="row" style="margin-top:10px">
+      <button class="btn sec" id="segScan">좋은 구간 찾아보기</button>
+      <span class="hint" style="margin:0" id="segNow"></span>
+    </div>
+    <div id="segList"></div>
+  </div>
+
+  <div class="msg" id="refMsg"></div>
+</div>
+
+<!-- 5 엔딩 포스터 -->
+<div class="card off" id="c5">
+  <div class="hd"><span class="n">5</span><h2>엔딩 포스터</h2></div>
+  <p class="hint">마지막에 캐릭터가 표지판을 가리킵니다. <b>엔딩만 따로 만들어 확인하고 다시 뽑을 수 있어서</b>,
+    마음에 안 든다고 30초 영상을 통째로 다시 만들 필요가 없습니다.</p>
+
+  <label class="lbl">문구 <span class="opt">— 글자는 영상 위에 얹으므로 몇 번이든 고칠 수 있습니다</span></label>
+  <div class="row">
+    <div style="flex:2;min-width:180px">
+      <label class="lbl" style="font-weight:400">제목</label>
+      <input type="text" id="p1" placeholder="한양대 대동제">
+    </div>
+    <div style="flex:2;min-width:180px">
+      <label class="lbl" style="font-weight:400">날짜 <span class="opt">— 가장 크게</span></label>
+      <input type="text" id="p2" placeholder="5월 20일 (화)">
+    </div>
+    <div style="flex:2;min-width:180px">
+      <label class="lbl" style="font-weight:400">장소·한마디</label>
+      <input type="text" id="p3" placeholder="대운동장에서 만나요!">
+    </div>
+  </div>
+
+  <div class="hr"></div>
+  <label class="lbl">장면</label>
+  <div class="row">
+    <div style="flex:1.2;min-width:170px">
+      <label class="lbl" style="font-weight:400">표지판 종류</label>
+      <select id="endKind"></select>
+    </div>
+    <div style="flex:1.2;min-width:170px">
+      <label class="lbl" style="font-weight:400">캐릭터 자세</label>
+      <select id="endPose"></select>
+    </div>
+    <div style="flex:1;min-width:130px">
+      <label class="lbl" style="font-weight:400">길이
+        <span class="mono" id="endSecVal" style="float:right;color:var(--accent)"></span></label>
+      <input type="range" id="endSec" min="4" max="8" step="1" style="width:100%">
+    </div>
+  </div>
+  <div class="row" style="align-items:flex-start">
+    <div style="flex:2;min-width:240px">
+      <label class="lbl">장소 설명 <span class="opt">— 비우면 배경과 같은 곳으로</span></label>
+      <input type="text" id="endScene" placeholder="예: 체육관 입구 게시판 앞">
+    </div>
+    <div style="flex:1.2;min-width:200px">
+      <label class="lbl">장소 사진 <span class="opt">— 선택</span></label>
+      <input type="file" id="endPhoto" accept="image/png,image/jpeg,image/webp">
+      <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <img id="endPhotoImg" style="display:none;height:72px;border:1px solid var(--line);border-radius:8px" alt="">
+        <button class="btn sec sm" id="endPhotoClear" style="display:none">사진 빼기</button>
+      </div>
+    </div>
+  </div>
+
+  <label class="lbl">직접 서술하기 <span class="opt">— 쓰면 위의 표지판·자세 대신 이 내용으로 만듭니다</span></label>
+  <textarea id="endPrompt" style="min-height:60px" placeholder="예: 캐릭터가 야외 무대 옆 게시판 앞에 앉아 있고, 뒤로 축제 조명이 켜져 있다"></textarea>
+  <p class="hint">표지판은 어떤 경우에도 <b>빈 상태로</b> 만듭니다. 글자는 나중에 영상 위에 얹습니다.</p>
+
+  <div class="hr"></div>
+  <label class="lbl">포스터 디자인</label>
+  <div class="row">
+    <div style="flex:1;min-width:110px">
+      <label class="lbl" style="font-weight:400">강조색</label>
+      <input type="color" id="pAccent" value="#E8B22E">
+    </div>
+    <div style="flex:1;min-width:110px">
+      <label class="lbl" style="font-weight:400">종이색</label>
+      <input type="color" id="pBg" value="#FCFAF5">
+    </div>
+    <div style="flex:1;min-width:110px">
+      <label class="lbl" style="font-weight:400">글자색</label>
+      <input type="color" id="pInk" value="#26221C">
+    </div>
+    <div style="flex:1.6;min-width:200px">
+      <label class="lbl" style="font-weight:400">포스터 글꼴</label>
+      <div class="fontpick">
+        <button type="button" class="fontbtn" id="pFontBtn"></button>
+        <div class="fontlist" id="pFontList"></div>
+      </div>
+    </div>
+    <label class="hint" style="margin:0 0 10px;display:flex;align-items:center;gap:6px">
+      <input type="checkbox" id="pBar" checked> 위쪽 색 띠
+    </label>
+  </div>
+
+  <div class="hr"></div>
+  <label class="lbl">포스터 미리보기 <span class="opt">— 이 그림이 그대로 영상에 들어갑니다</span></label>
+  <div class="row" style="align-items:flex-start;margin-top:8px">
+    <img id="posterPrev" style="width:170px;border:1px solid var(--line);border-radius:10px" alt="">
+    <div style="flex:1;min-width:230px">
+      <div class="row" style="margin:0 0 8px">
+        <button class="btn sec" id="posterDraw">포스터 미리보기</button>
+        <span class="hint" style="margin:0" id="posterDirty"></span>
+      </div>
+      <p class="hint" style="margin-top:0">문구·색상·글꼴을 바꾼 뒤 이 버튼을 누르면
+        <b>이 그림이 다시 그려집니다.</b></p>
+      <label class="lbl">넣는 방식</label>
+      <select id="posterMode">
+        <option value="bake">장면에 심기 — 캐릭터가 포스터 앞에 설 수 있음 (권장)</option>
+        <option value="overlay">영상 위에 얹기 — 문구를 바로 고칠 수 있음</option>
+      </select>
+      <p class="hint" id="posterModeNote"></p>
+    </div>
+  </div>
+
+  <div class="hr"></div>
+  <div class="row" style="margin-top:4px">
+    <button class="btn" id="endStill">① 장면 이미지 만들기</button>
+    <button class="btn" id="endVideo">② 이 장면으로 영상 만들기</button>
+    <button class="btn sec" id="pSave">문구·디자인만 적용</button>
+  </div>
+  <p class="hint">①을 여러 번 눌러 마음에 드는 장면이 나올 때까지 고르고, 그때 ②로 넘어가세요.</p>
+  <div class="prev" id="endPrev"></div>
+  <div class="msg" id="pMsg"></div>
+</div>
+
+<!-- 6 자막 -->
+<div class="card off" id="c6s">
+  <div class="hd"><span class="n">6</span><h2>가사 자막</h2></div>
+  <p class="hint">음원에서 가사를 자동으로 받아씁니다. <b>노래는 말이 아니라서 자주 틀립니다</b> —
+    아래 표에서 직접 고쳐주세요. 시간은 대체로 맞으니 글자만 손보시면 됩니다.
+    고친 자막은 <b>몇 번이든 다시 넣을 수 있습니다.</b></p>
+  <div class="row" style="margin-top:12px">
+    <button class="btn sec" id="subGen">가사 받아쓰기</button>
+    <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">
+      <input type="checkbox" id="subsOn" checked> 영상에 자막 넣기
+    </label>
+  </div>
+
+  <div class="row" style="margin-top:14px">
+    <div style="flex:1;min-width:140px">
+      <label class="lbl">위치</label>
+      <select id="subPos">
+        <option value="top">위쪽 (하늘 부분)</option>
+        <option value="bottom">아래쪽</option>
+      </select>
+    </div>
+    <div style="flex:1.4;min-width:170px">
+      <label class="lbl">모양</label>
+      <select id="subStyle"></select>
+    </div>
+    <div style="flex:1.6;min-width:210px">
+      <label class="lbl">글꼴 <span class="opt">— 눌러서 실제 모양으로 고르세요</span></label>
+      <div class="fontpick">
+        <button type="button" class="fontbtn" id="subFontBtn"></button>
+        <div class="fontlist" id="subFontList"></div>
+      </div>
+    </div>
+    <div style="flex:1;min-width:150px">
+      <label class="lbl">크기 <span class="mono" id="subSizeVal" style="float:right;color:var(--accent)"></span></label>
+      <input type="range" id="subSize" min="20" max="60" step="1" style="width:100%">
+    </div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div style="flex:1;min-width:120px">
+      <label class="lbl">글자색</label>
+      <input type="color" id="subColor" value="#FFFFFF">
+    </div>
+    <div style="flex:1;min-width:120px">
+      <label class="lbl">테두리색</label>
+      <input type="color" id="subOutColor" value="#181818">
+    </div>
+    <div style="flex:1.3;min-width:160px">
+      <label class="lbl">테두리 두께
+        <span class="mono" id="subOutVal" style="float:right;color:var(--accent)"></span></label>
+      <input type="range" id="subOutline" min="0" max="25" step="1" style="width:100%">
+    </div>
+    <div style="flex:1;min-width:120px">
+      <label class="lbl">굵기</label>
+      <select id="subBold">
+        <option value="">모양 기본값</option>
+        <option value="false">얇게</option>
+        <option value="true">굵게</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="hr"></div>
+  <label class="lbl">카메라 무빙</label>
+  <select id="camera"></select>
+  <p class="hint">생성된 영상에 나중에 입히는 방식이라 <b>몇 번이든 바꿔볼 수 있습니다.</b>
+    자막은 같이 흔들리지 않게 카메라 뒤에 얹습니다.</p>
+  <table class="subs" id="subTable"></table>
+  <div class="row" style="margin-top:12px">
+    <button class="btn sec sm" id="subAdd">+ 줄 추가</button>
+    <button class="btn" id="subSave">저장하고 영상에 적용</button>
+  </div>
+  <div class="msg" id="subMsg"></div>
+</div>
+
+<!-- 6 생성 -->
+<div class="card off" id="c6">
+  <div class="hd"><span class="n">7</span><h2>영상 만들기</h2></div>
+  <p class="hint" id="estLine"></p>
+  <div id="scoreWarn2"></div>
+  <label class="lbl">생성 방식</label>
+  <select id="mode">
+    <option value="one">한 번에 만들기 — 끊김 없음 (권장)</option>
+    <option value="split">6초씩 나눠 만들기 — 캐릭터가 덜 변하지만 이음매가 보임</option>
+  </select>
+  <p class="hint" id="modeHint"></p>
+  <div class="row" style="margin-top:14px;align-items:center">
+    <button class="btn big" id="renderGo">만들기</button>
+    <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">
+      <input type="checkbox" id="wantEnd" checked> 엔딩 포스터 포함
+    </label>
+  </div>
+  <div class="msg" id="rMsg"></div>
+  <div class="grid" id="cutsGrid"></div>
+</div>
+
+<!-- 7 완성 -->
+<div class="card off" id="c7">
+  <div class="hd"><span class="n">8</span><h2>완성</h2></div>
+  <div class="prev" id="finPrev"></div>
+  <div class="row" style="margin-top:14px">
+    <button class="btn" id="dl">영상 내려받기</button>
+    <button class="btn sec" id="reFinish">문구만 바꿔 다시 만들기</button>
+  </div>
+  <div class="msg" id="fMsg"></div>
+</div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+
+// 처리기 안에서 예외가 나면 버튼이 "안 눌리는" 것처럼 보인다. 무조건 띄운다.
+function fatal(msg){
+  let b = document.getElementById('errbar');
+  if (!b){
+    b = document.createElement('div');
+    b.id = 'errbar';
+    b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:999;padding:11px 16px;'
+      + 'background:#D64550;color:#fff;font-size:13px;line-height:1.5';
+    document.body.appendChild(b);
+  }
+  b.textContent = '화면 오류: ' + msg + '  (이 문구를 알려주시면 바로 고칩니다)';
+}
+window.addEventListener('error', e => fatal(e.message));
+window.addEventListener('unhandledrejection', e =>
+  fatal((e.reason && e.reason.message) || String(e.reason)));
+let JOB = null, POLL = null, FONTS = null;
+
+async function api(url, opt){
+  const r = await fetch(url, opt);
+  const t = await r.text();
+  let j = null; try { j = JSON.parse(t); } catch(e){}
+  if (!r.ok) throw new Error((j && (j.error || j.detail)) || t.slice(0,200) || ('오류 ' + r.status));
+  return j;
+}
+function form(o){ const f = new FormData(); for (const k in o) f.append(k, o[k]); return f; }
+function say(el, text, kind){
+  const m = $(el); m.className = 'msg show' + (kind ? ' ' + kind : ''); m.textContent = text;
+}
+function hide(el){ $(el).classList.remove('show'); }
+
+// 긴 작업은 서버 스레드에서 돌고 여기서는 상태만 물어본다.
+// 요청 하나로 몇 분을 붙잡고 있으면 연결이 끊길 때 실패한다.
+async function runTask(start, msgEl, label){
+  say(msgEl, label + ' 시작 중...');
+  try { await start(); } catch(e){ say(msgEl, e.message, 'err'); return false; }
+  for(;;){
+    await new Promise(r => setTimeout(r, 1500));
+    let t; try { t = await api(`/api/${JOB.id}/task`); } catch(e){ continue; }
+    if (t.state === 'running'){
+      const el = t.started ? Math.round(Date.now()/1000 - t.started) : 0;
+      const pg = t.total > 0 ? `  ${t.done}/${t.total}` : '';
+      say(msgEl, `${label} — ${t.msg || '진행 중'}${pg}   (${el}초 경과)`);
+      continue;
+    }
+    if (t.state === 'error'){ say(msgEl, t.msg || '실패했습니다.', 'err'); await reload(); return false; }
+    // 하던 작업이 사라졌다 (서버가 다시 켜졌거나 죽었다). 끝난 게 아니다.
+    if (t.state === 'idle'){
+      say(msgEl, label + '이(가) 중간에 끊겼습니다 — 서버가 다시 시작된 것 같습니다. 다시 시도해주세요.', 'err');
+      await reload(); return false;
+    }
+    say(msgEl, label + ' 완료', 'ok');
+    await reload();
+    return true;
+  }
+}
+
+async function reload(){
+  JOB = await api('/api/' + JOB.id);
+  render(); await loadBar();
+}
+
+async function loadBar(){
+  const js = await api('/api/jobs');
+  $('#bar').innerHTML = js.map(j =>
+    `<button data-j="${j.id}" class="${JOB && j.id===JOB.id?'on':''}">${j.title||'새 영상'}${j.result?' ✓':''}</button>`
+  ).join('') + '<button data-new="1">+ 새 영상</button>';
+  $('#bar').querySelectorAll('[data-j]').forEach(b => b.onclick = async () => {
+    JOB = await api('/api/' + b.dataset.j); render(); loadBar();
+  });
+  $('#bar').querySelector('[data-new]').onclick = async () => {
+    JOB = await api('/api/new', {method:'POST'}); render(); loadBar();
+  };
+}
+
+function step(id, state){
+  const c = $(id);
+  c.classList.toggle('off', state === 'off');
+  c.classList.toggle('done', state === 'done');
+}
+
+// 자막의 진짜 값은 화면 입력칸이다. JOB 을 서버 응답으로 갈아끼우다
+// 편집분이 날아간 적이 있어서, 저장할 때는 항상 화면에서 다시 읽는다.
+function collectSubs(){
+  const rows = {};
+  $('#subTable').querySelectorAll('input[data-i]').forEach(inp => {
+    const i = +inp.dataset.i;
+    (rows[i] = rows[i] || {})[inp.dataset.k] =
+      inp.dataset.k === 'text' ? inp.value : parseFloat(inp.value || 0);
+  });
+  return Object.keys(rows).sort((a,b)=>a-b).map(k => ({
+    start: rows[k].start || 0, end: rows[k].end || 0, text: rows[k].text || ''}));
+}
+
+function drawSegs(){
+  const j = JOB, box = $('#segBox');
+  if (!j.plate){ box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  const s = j.clip_start || 0, d = j.clip_dur || 0;
+  $('#segNow').textContent = `지금: ${s.toFixed(1)}초부터 ${d.toFixed(0)}초`;
+  const recs = j.seg_recs;
+  if (!recs || !recs.length){ $('#segList').innerHTML = ''; return; }
+  const best = Math.max(...recs.map(r => r.score));
+  $('#segList').innerHTML = '<div class="segs">' + recs.map(r => {
+    const on = Math.abs(r.start - s) < 0.15;
+    const why = r.ok ? '' : (r.fail || []).join(' · ');
+    return `<button class="seg${on ? ' on' : ''}" data-start="${r.start}">
+      <span class="sc" style="color:${r.score >= 85 ? 'var(--ok)' :
+        (r.score >= 70 ? '#8A5A12' : 'var(--err)')}">${r.score}</span>
+      <span class="tm">${r.start.toFixed(1)}~${(r.start + r.dur).toFixed(1)}초</span>
+      <span class="st">${on ? '지금 쓰는 구간' : (why || '문제 없음')}</span>
+      ${r.score === best ? '<span class="best">추천</span>' : ''}
+    </button>`;
+  }).join('') + '</div>';
+  $('#segList').querySelectorAll('[data-start]').forEach(b => b.onclick = () =>
+    runTask(() => api(`/api/${JOB.id}/reference/pick`, {method:'POST',
+      body:form({start: b.dataset.start})}), '#refMsg', '구간 적용'));
+}
+
+function posterStamp(){
+  const j = JOB;
+  return [ (j.poster||[]).join('|'), j.poster_accent, j.poster_bg, j.poster_ink,
+           j.poster_font, j.poster_bar ].join('_');
+}
+
+function warnHTML(c){
+  if (!c || c.level === 'ok') return '';
+  const li = (c.reasons||[]).map(r => `<li>${r}</li>`).join('');
+  if (c.level === 'block'){
+    return `<div class="warn block"><b>이 영상으로는 결과가 무너질 가능성이 큽니다 (${c.score}점 · 기준 ${c.min}점).</b>
+      ${li ? `<ul>${li}</ul>` : ''}
+      <div style="margin-top:7px">다른 구간을 잘라서 올리거나 다른 영상을 쓰시는 편이 낫습니다.
+      그래도 만들려면 7단계에서 한 번 더 확인합니다.</div></div>`;
+  }
+  return `<div class="warn warn"><b>쓸 수는 있지만 아주 좋지는 않습니다 (${c.score}점).</b>
+    ${li ? `<ul>${li}</ul>` : ''}</div>`;
+}
+
+function drawSubs(){
+  const rows = (JOB.subs || []).map((s,i) => `<tr>
+    <td><input type="number" step="0.1" min="0" data-k="start" data-i="${i}" value="${s.start}"></td>
+    <td><input type="number" step="0.1" min="0" data-k="end" data-i="${i}" value="${s.end}"></td>
+    <td style="width:100%"><input type="text" data-k="text" data-i="${i}" value="${
+      String(s.text||'').replace(/"/g,'&quot;')}"></td>
+    <td><button class="del" data-del="${i}" title="이 줄 지우기">×</button></td></tr>`).join('');
+  $('#subTable').innerHTML = rows
+    ? `<tr><th>시작(초)</th><th>끝(초)</th><th>내용</th><th></th></tr>` + rows
+    : '';
+  $('#subTable').querySelectorAll('input').forEach(inp => inp.oninput = () => {
+    const s = JOB.subs[+inp.dataset.i];
+    s[inp.dataset.k] = inp.dataset.k === 'text' ? inp.value : parseFloat(inp.value || 0);
+  });
+  $('#subTable').querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+    JOB.subs = collectSubs();
+    JOB.subs.splice(+b.dataset.del, 1); drawSubs();
+  });
+}
+
+function render(){
+  const j = JOB;
+
+  let chtml = '';
+  if (j.character_raw)
+    chtml += `<div><img class="shot" style="width:150px" src="/api/${j.id}/file/${j.character_raw}?v=${j.character_n}">
+      <p class="hint">올리신 원본</p></div>`;
+  if (j.character)
+    chtml += `<div><img class="shot" style="width:${j.character_raw ? 150 : 210}px"
+      src="/api/${j.id}/file/${j.character}?v=${j.character_n}_${j.keycut_n}">
+      <p class="hint">${j.character_raw ? '다듬은 캐릭터 — 이걸로 만듭니다' : '올리신 그림'}</p></div>`;
+  $('#charPrev').innerHTML = chtml;
+  if (FONTS && FONTS.style_modes){
+    $('#styleMode').value = j.style_mode || '3d';
+    const m = FONTS.style_modes.find(x => x.id === (j.style_mode || '3d'));
+    $('#styleNote').textContent = m ? m.note : '';
+  }
+  const doodle = (j.style_mode || '3d') === 'doodle';
+  $('#charFixRow').style.display = doodle ? '' : 'none';
+  $('#charClean').style.display = doodle ? '' : 'none';
+  $('#charCleanNote').style.display = doodle ? '' : 'none';
+  $('#charClean').disabled = !j.character;
+  step('#c1', j.character ? 'done' : '');
+
+  step('#c2', j.character ? (j.keycut ? 'done' : '') : 'off');
+  if (j.bg_prompt && !$('#bgPrompt').value) $('#bgPrompt').value = j.bg_prompt;
+  const bp = $('#bgPhotoImg');
+  if (j.bg_photo){
+    bp.src = `/api/${j.id}/file/${j.bg_photo}?t=${j.keycut_n}`;
+    bp.style.display = ''; $('#bgPhotoClear').style.display = '';
+  } else {
+    bp.style.display = 'none'; $('#bgPhotoClear').style.display = 'none';
+  }
+
+  step('#c3', j.keycut ? (j.keycut_approved ? 'done' : '') : 'off');
+  $('#keyPrev').innerHTML = j.keycut
+    ? `<img class="shot" style="width:250px" src="/api/${j.id}/file/${j.keycut}?v=${j.keycut_n}">` : '';
+  $('#keyChecks').innerHTML = j.keycut ? `
+    <p class="chk">· 발밑에 바닥이 넉넉히 보이나요? 여백이 없으면 다리가 뭉개집니다.</p>
+    <p class="chk">· 손에 든 물건이 없나요? 들고 있으면 춤추다 머리 위로 올라갑니다.</p>
+    <p class="chk">· 머리끝부터 발끝까지 다 보이나요?</p>` : '';
+  $('#keyOk').style.display = j.keycut_approved ? 'none' : '';
+  $('#keyUndo').style.display = j.keycut_approved ? '' : 'none';
+  if (j.keycut_approved) say('#keyMsg', '승인됨 — 이 키컷으로 영상을 만듭니다.', 'ok');
+
+  step('#c4', j.keycut_approved ? (j.plate ? 'done' : '') : 'off');
+  let rp = '';
+  if (j.plate) rp += `<video class="shot" src="/api/${j.id}/file/${j.plate}" controls muted></video>`;
+  if (j.clip_score){
+    const s = j.clip_score, c = j.score_check;
+    const lv = c ? c.level : 'ok';
+    rp += `<div><span class="tag ${lv==='ok'?'ok':(lv==='warn'?'':'no')}">적합도 ${s.score}점</span>
+      <p class="hint">${j.segments} 컷 · ${Math.round((j.segments*6))}초 분량</p></div>`;
+  }
+  const src = j.music_src || 'reference';
+  $('#musSrc').value = src;
+  $('#musFile').style.display = src === 'file' ? '' : 'none';
+  let mtag = '';
+  if (src === 'none') mtag = '<span class="tag">소리 없음</span>';
+  else if (src === 'file') mtag = j.music ? '<span class="tag ok">음악 파일 등록됨</span>'
+                                          : '<span class="tag no">음악 파일을 올려주세요</span>';
+  else mtag = j.ref_audio ? '<span class="tag ok">춤 영상 소리 사용</span>'
+                          : '<span class="tag no">이 영상에는 소리가 없습니다</span>';
+  if (j.plate) rp += `<div>${mtag}</div>`;
+  $('#refPrev').innerHTML = rp;
+  $('#scoreWarn').innerHTML = warnHTML(j.score_check);
+  drawSegs();
+  $('#mode').value = j.one_shot === false ? 'split' : 'one';
+  $('#modeHint').textContent = j.one_shot === false
+    ? '6초마다 캐릭터가 원래 모습으로 돌아오지만, 이어붙인 자리가 보입니다.'
+    : '끊김 없이 이어집니다. 대신 뒤로 갈수록 캐릭터가 조금씩 변할 수 있습니다.';
+
+  step('#c5', j.keycut_approved ? (j.ending ? 'done' : '') : 'off');
+  const pl3 = j.poster || ['','',''];
+  ['#p1','#p2','#p3'].forEach((el,i) => { if (pl3[i] && !$(el).value) $(el).value = pl3[i]; });
+  if (FONTS){
+    $('#endKind').value = j.ending_kind || 'wall';
+    $('#endPose').value = j.ending_pose || 'point';
+    PFONT_VALUE = j.poster_font || ''; paintPFontBtn();
+  }
+  $('#endScene').value = j.ending_scene || '';
+  if (document.activeElement !== $('#endPrompt')) $('#endPrompt').value = j.ending_prompt || '';
+  const ep = $('#endPhotoImg');
+  if (j.ending_photo){
+    ep.src = `/api/${j.id}/file/${j.ending_photo}?t=${j.ending_still_n||0}`;
+    ep.style.display = ''; $('#endPhotoClear').style.display = '';
+  } else {
+    ep.style.display = 'none'; $('#endPhotoClear').style.display = 'none';
+  }
+  $('#endVideo').disabled = !j.ending_still;
+  if (!$('#posterPrev').src) $('#posterPrev').src =
+    `/api/${j.id}/poster_preview?t=${posterStamp()}`;
+  const pm = j.poster_mode || 'bake';
+  $('#posterMode').value = pm;
+  $('#posterModeNote').textContent = pm === 'bake'
+    ? '포스터가 장면의 일부가 되어 캐릭터가 그 앞에 설 수 있습니다. 문구를 바꾸면 영상을 다시 만들어야 합니다.'
+    : '문구·디자인을 몇 번이든 바꿀 수 있습니다. 대신 캐릭터가 항상 포스터 뒤에 있습니다.';
+  $('#endSec').value = j.ending_sec || 4;
+  $('#endSecVal').textContent = $('#endSec').value + '초';
+  $('#pAccent').value = j.poster_accent || '#E8B22E';
+  $('#pBg').value = j.poster_bg || '#FCFAF5';
+  $('#pInk').value = j.poster_ink || '#26221C';
+  $('#pBar').checked = j.poster_bar !== false;
+  let ehtml = '';
+  // 분홍 표지판은 위치를 표시하려고 칠해둔 내부용이라 보여주지 않는다.
+  // 심는 방식이면 포스터가 들어간 모습만, 얹는 방식이면 장면만 보여준다.
+  const shot = j.ending_baked || (j.poster_mode === 'overlay' ? j.ending_still : null);
+  if (shot)
+    ehtml += `<div><img class="shot" style="width:190px" src="/api/${j.id}/file/${shot}?t=${posterStamp()}_${j.ending_still_n}">
+      <p class="hint">엔딩 장면 (${j.ending_still_n}번째) — 이걸로 영상을 만듭니다</p></div>`;
+  if (j.ending)
+    ehtml += `<div><video class="shot" style="width:190px" src="/api/${j.id}/file/${j.ending}?t=${Date.now()}" controls muted></video>
+      <p class="hint">완성된 엔딩</p></div>`;
+  $('#endPrev').innerHTML = ehtml;
+
+  step('#c6s', (j.ref_audio || j.music) ? ((j.subs||[]).length ? 'done' : '') : 'off');
+  $('#subsOn').checked = j.subs_on !== false;
+  if (FONTS){
+    $('#subPos').value = j.subs_pos || 'top';
+    $('#subStyle').value = j.subs_style || 'soft';
+    FONT_VALUE = j.subs_font || ''; paintFontBtn();
+    $('#camera').value = j.camera || 'sway';
+  }
+  $('#subColor').value = j.subs_color || '#FFFFFF';
+  $('#subOutColor').value = j.subs_outline_color || '#181818';
+  $('#subBold').value = j.subs_bold === true ? 'true' : (j.subs_bold === false ? 'false' : '');
+  const ow = Math.round((j.subs_outline == null ? 0.045 : j.subs_outline) * 200);
+  $('#subOutline').value = ow;
+  $('#subOutVal').textContent = (ow/2).toFixed(1) + '%';
+  const sz = Math.round((j.subs_size || 0.030) * 1000);
+  $('#subSize').value = sz; $('#subSizeVal').textContent = (sz/10).toFixed(1) + '%';
+  drawSubs();
+
+  step('#c6', j.plate ? (j.result ? 'done' : '') : 'off');
+  $('#cutsGrid').innerHTML = (j.cuts||[]).map(c =>
+    `<video src="/api/${j.id}/file/${c}" controls muted></video>`).join('');
+
+  step('#c7', j.result ? 'done' : 'off');
+  $('#finPrev').innerHTML = j.result
+    ? `<video class="final" src="/api/${j.id}/file/${j.result}?t=${Date.now()}" controls></video>` : '';
+
+
+  $('#scoreWarn2').innerHTML = warnHTML(j.score_check);
+  if (j.plate) estimate();
+}
+
+async function estimate(){
+  try {
+    const e = await api(`/api/${JOB.id}/estimate`);
+    $('#estLine').innerHTML =
+      (e.one_shot ? `<b>${e.seconds}초</b> 한 편`
+                  : `${e.segments}개 컷 × 6초 = <b>${e.seconds}초</b>`) +
+      ($('#wantEnd').checked ? ` + 엔딩 4초` : ``) +
+      (e.one_shot ? ` · <b>8~12분</b> 걸립니다.` : ` · 컷을 동시에 만들어 <b>7~10분</b> 걸립니다.`);
+  } catch(e){}
+}
+
+// ---- 이벤트 ----
+$('#charFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  hide('#charMsg');
+  try {
+    JOB = await api(`/api/${JOB.id}/character`, {method:'POST', body:form({file:f})});
+    render(); say('#charMsg', '캐릭터를 등록했습니다.', 'ok');
+  } catch(err){ say('#charMsg', err.message, 'err'); }
+};
+
+$('#styleMode').onchange = async () => {
+  try {
+    JOB = await api(`/api/${JOB.id}/style`, {method:'POST',
+      body:form({style_mode: $('#styleMode').value})});
+    render(); say('#charMsg', '화풍을 바꿨습니다. 키컷을 다시 만들면 반영됩니다.', 'ok');
+  } catch(e){ say('#charMsg', e.message, 'err'); }
+};
+
+$('#charClean').onclick = () => runTask(
+  () => api(`/api/${JOB.id}/character/cleanup`,
+    {method:'POST', body:form({feedback:$('#charFix').value})}), '#charMsg', '그림 다듬기');
+
+$('#bgPhoto').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    JOB = await api(`/api/${JOB.id}/bg_photo`, {method:'POST', body:form({file:f})});
+    render(); say('#bgMsg', '장소 사진을 등록했습니다. 키컷을 만들면 반영됩니다.', 'ok');
+  } catch(err){ say('#bgMsg', err.message, 'err'); }
+};
+
+$('#bgPhotoClear').onclick = async () => {
+  JOB = await api(`/api/${JOB.id}/bg_photo`, {method:'POST', body:form({clear:'true'})});
+  $('#bgPhoto').value = '';
+  render(); say('#bgMsg', '장소 사진을 뺐습니다.', 'ok');
+};
+
+$('#bgGo').onclick = () => runTask(
+  () => api(`/api/${JOB.id}/keycut`, {method:'POST', body:form({bg_prompt:$('#bgPrompt').value})}),
+  '#bgMsg', '키컷 만들기');
+
+// 캐릭터와 배경을 나눠 받아 한 문장으로 합친다. 어느 쪽 이야기인지 알려주면
+// 모델이 엉뚱한 곳을 고치는 일이 줄어든다.
+function keyFeedback(){
+  const c = $('#keyFixChar').value.trim(), b = $('#keyFixBg').value.trim();
+  return [c && ('the character: ' + c), b && ('the background: ' + b)]
+         .filter(Boolean).join(' / ');
+}
+
+$('#keyAgain').onclick = () => runTask(
+  () => api(`/api/${JOB.id}/keycut`, {method:'POST',
+    body:form({bg_prompt:$('#bgPrompt').value, feedback:keyFeedback()})}),
+  '#keyMsg', '키컷 다시 만들기');
+
+$('#keyOk').onclick = async () => {
+  JOB = await api(`/api/${JOB.id}/keycut/approve`, {method:'POST', body:form({approved:'true'})});
+  render(); loadBar();
+};
+$('#keyUndo').onclick = async () => {
+  JOB = await api(`/api/${JOB.id}/keycut/approve`, {method:'POST', body:form({approved:'false'})});
+  hide('#keyMsg'); render();
+};
+
+$('#refFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  e.target.value = '';     // 같은 파일을 다시 골라도 다시 올라가게
+  await runTask(() => api(`/api/${JOB.id}/reference`, {method:'POST', body:form({file:f})}),
+                '#refMsg', '레퍼런스 분석');
+};
+
+$('#segScan').onclick = () => runTask(
+  () => api(`/api/${JOB.id}/reference/scan`, {method:'POST'}), '#refMsg', '좋은 구간 찾기');
+
+$('#musSrc').onchange = async () => {
+  const keep = collectSubs();
+  JOB = await api(`/api/${JOB.id}/options`, {method:'POST',
+        body:form({music_src:$('#musSrc').value})});
+  if (keep.length) JOB.subs = keep;
+  render(); estimate();
+};
+
+$('#mode').onchange = async () => {
+  const keep = collectSubs();
+  JOB = await api(`/api/${JOB.id}/options`, {method:'POST',
+        body:form({one_shot: $('#mode').value === 'one' ? 'true' : 'false'})});
+  if (keep.length) JOB.subs = keep;
+  render(); estimate();
+};
+
+$('#musFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    JOB = await api(`/api/${JOB.id}/music`, {method:'POST', body:form({file:f})});
+    render(); say('#refMsg', '음악을 등록했습니다.', 'ok');
+  } catch(err){ say('#refMsg', err.message, 'err'); }
+};
+
+async function saveEndOptions(){
+  return api(`/api/${JOB.id}/ending/options`, {method:'POST', body:form({
+    ending_kind: $('#endKind').value, ending_pose: $('#endPose').value,
+    ending_scene: $('#endScene').value, ending_sec: $('#endSec').value,
+    ending_prompt: $('#endPrompt').value,
+    poster_accent: $('#pAccent').value, poster_bg: $('#pBg').value,
+    poster_ink: $('#pInk').value, poster_font: PFONT_VALUE,
+    poster_bar: $('#pBar').checked ? 'true' : 'false',
+    poster_mode: $('#posterMode').value})});
+}
+// 값이 바뀌면 저장만 하고, 미리보기는 버튼을 눌렀을 때 그린다.
+// 한 자 칠 때마다 그림을 다시 만들면 느리고 요청도 과하다.
+let POSTER_DIRTY = false;
+
+function markDirty(){
+  POSTER_DIRTY = true;
+  $('#posterDirty').textContent = '← 바뀐 내용이 있습니다';
+  $('#posterDirty').style.color = 'var(--accent)';
+}
+
+async function drawPoster(){
+  try {
+    JOB = await saveEndOptions();
+    await api(`/api/${JOB.id}/poster`, {method:'POST',
+      body:form({l1:$('#p1').value, l2:$('#p2').value, l3:$('#p3').value})}).catch(()=>{});
+    JOB.poster = [$('#p1').value, $('#p2').value, $('#p3').value];
+    POSTER_DIRTY = false;
+    $('#posterDirty').textContent = '';
+    $('#posterPrev').src = `/api/${JOB.id}/poster_preview?t=${Date.now()}`;
+    render();
+  } catch(e){ say('#pMsg', e.message, 'err'); }
+}
+
+$('#posterDraw').onclick = drawPoster;
+
+$('#endKind').onchange = $('#endPose').onchange = $('#pAccent').onchange =
+  $('#pBg').onchange = $('#pInk').onchange = $('#pBar').onchange =
+  $('#endScene').onchange = async () => {
+    try { JOB = await saveEndOptions(); markDirty(); }
+    catch(e){ say('#pMsg', e.message, 'err'); }
+  };
+$('#endSec').oninput = () => $('#endSecVal').textContent = $('#endSec').value + '초';
+$('#endSec').onchange = async () => { JOB = await saveEndOptions(); markDirty(); };
+
+$('#endPhoto').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    JOB = await api(`/api/${JOB.id}/ending/photo`, {method:'POST', body:form({file:f})});
+    render(); say('#pMsg', '장소 사진을 등록했습니다.', 'ok');
+  } catch(err){ say('#pMsg', err.message, 'err'); }
+};
+$('#endPhotoClear').onclick = async () => {
+  JOB = await api(`/api/${JOB.id}/ending/photo`, {method:'POST', body:form({clear:'true'})});
+  $('#endPhoto').value = ''; render(); say('#pMsg', '장소 사진을 뺐습니다.', 'ok');
+};
+$('#endPrompt').onchange = async () => { JOB = await saveEndOptions(); markDirty(); };
+
+$('#posterMode').onchange = async () => {
+  try {
+    JOB = await saveEndOptions();
+    render();
+    say('#pMsg', $('#posterMode').value === 'bake'
+      ? '장면에 심는 방식으로 바꿨습니다. ①을 다시 누르면 심은 모습을 볼 수 있습니다.'
+      : '영상 위에 얹는 방식으로 바꿨습니다.', 'ok');
+  } catch(e){ say('#pMsg', e.message, 'err'); }
+};
+
+// 문구를 고치면 미리보기가 바로 따라오게 한다 (저장은 버튼을 눌러야 한다)
+['#p1','#p2','#p3'].forEach(el => $(el).oninput = () => {
+  JOB.poster = [$('#p1').value, $('#p2').value, $('#p3').value];
+  markDirty();
+});
+['#p1','#p2','#p3'].forEach(el => $(el).onchange = markDirty);
+
+$('#endStill').onclick = async () => {
+  try {
+    await saveEndOptions();
+    await api(`/api/${JOB.id}/poster`, {method:'POST',
+      body:form({l1:$('#p1').value, l2:$('#p2').value, l3:$('#p3').value})}).catch(()=>{});
+    runTask(() => api(`/api/${JOB.id}/ending/still`, {method:'POST'}), '#pMsg', '엔딩 장면 만들기');
+  } catch(e){ say('#pMsg', e.message, 'err'); }
+};
+
+$('#endVideo').onclick = async () => {
+  try {
+    await saveEndOptions();
+    runTask(() => api(`/api/${JOB.id}/ending/video`, {method:'POST'}), '#pMsg', '엔딩 영상 만들기');
+  } catch(e){ say('#pMsg', e.message, 'err'); }
+};
+
+$('#pSave').onclick = async () => {
+  await drawPoster();
+  const body = form({l1:$('#p1').value, l2:$('#p2').value, l3:$('#p3').value});
+  if (JOB.ending_raw){
+    runTask(() => api(`/api/${JOB.id}/poster`, {method:'POST', body}), '#pMsg', '문구·디자인 적용');
+  } else {
+    JOB = await api(`/api/${JOB.id}/poster`, {method:'POST', body});
+    render(); say('#pMsg', '저장했습니다. 엔딩을 만들 때 반영됩니다.', 'ok');
+  }
+};
+
+// 자막 모양·카메라 저장. 엔딩 카드를 넣을 때 실수로 지워졌던 부분이다.
+async function saveSubStyle(){
+  const keep = collectSubs();          // 설정 저장이 편집 중인 자막을 지우면 안 된다
+  const o = {
+    subs_pos: $('#subPos').value, subs_style: $('#subStyle').value,
+    subs_font: FONT_VALUE, subs_size: ($('#subSize').value/1000).toFixed(3),
+    subs_color: $('#subColor').value, subs_outline_color: $('#subOutColor').value,
+    subs_outline: ($('#subOutline').value/200).toFixed(3),
+    camera: $('#camera').value };
+  if ($('#subBold').value) o.subs_bold = $('#subBold').value;
+  const j = await api(`/api/${JOB.id}/options`, {method:'POST', body:form(o)});
+  if (keep.length) j.subs = keep;
+  return j;
+}
+
+$('#subPos').onchange = $('#subStyle').onchange = $('#subColor').onchange =
+  $('#subOutColor').onchange = $('#subBold').onchange = $('#camera').onchange =
+  async () => {
+    try { JOB = await saveSubStyle(); }
+    catch(e){ say('#subMsg', e.message, 'err'); }
+  };
+$('#subOutline').oninput = () => $('#subOutVal').textContent = ($('#subOutline').value/2).toFixed(1)+'%';
+$('#subSize').oninput = () => $('#subSizeVal').textContent = ($('#subSize').value/10).toFixed(1)+'%';
+$('#subOutline').onchange = $('#subSize').onchange = async () => {
+  try { JOB = await saveSubStyle(); }
+  catch(e){ say('#subMsg', e.message, 'err'); }
+};
+
+$('#subGen').onclick = () => runTask(
+  () => api(`/api/${JOB.id}/subtitles`, {method:'POST'}), '#subMsg', '가사 받아쓰기');
+
+$('#subAdd').onclick = () => {
+  JOB.subs = collectSubs();
+  const last = JOB.subs.length ? JOB.subs[JOB.subs.length-1].end : 0;
+  JOB.subs.push({start:+last.toFixed(1), end:+(last+2).toFixed(1), text:''});
+  drawSubs();
+};
+
+$('#subSave').onclick = async () => {
+  // 설정만 저장하면 서버에는 옛 자막이 남아서, 다시 구울 때 오타가 그대로 나온다.
+  // 항상 화면의 자막 글자까지 함께 보낸다.
+  try {
+    const subs = collectSubs();
+    JOB.subs = subs;
+    await saveSubStyle();
+    const body = form({subs: JSON.stringify(subs),
+                       subs_on: $('#subsOn').checked ? 'true' : 'false'});
+    if (JOB.result){
+      await runTask(() => api(`/api/${JOB.id}/subtitles/save`, {method:'POST', body}),
+                    '#subMsg', '자막과 카메라 적용');
+    } else {
+      JOB = await api(`/api/${JOB.id}/subtitles/save`, {method:'POST', body});
+      render(); say('#subMsg', '저장했습니다. 영상을 만들 때 반영됩니다.', 'ok');
+    }
+  } catch(e){ say('#subMsg', e.message, 'err'); }
+};
+
+$('#wantEnd').onchange = estimate;
+
+$('#renderGo').onclick = async () => {
+  const c = JOB.score_check;
+  if (c && c.level === 'block'){
+    const why = (c.reasons||[]).map(r => '\u00b7 ' + r).join('\n');
+    const ok = confirm(
+      `레퍼런스 적합도가 ${c.score}점입니다 (기준 ${c.min}점).\n\n` +
+      (why ? why + '\n\n' : '') +
+      `이대로 만들면 캐릭터가 뭉개지거나 동작이 어긋날 가능성이 큽니다.\n\n그래도 진행할까요?`);
+    if (!ok) return;
+  }
+  runTask(() => api(`/api/${JOB.id}/render`, {method:'POST',
+      body:form({with_ending: $('#wantEnd').checked ? 'true' : 'false',
+                 confirm_low: 'true'})}),
+    '#rMsg', '영상 만들기');
+};
+
+$('#dl').onclick = async () => {
+  hide('#fMsg');
+  const url = `/api/${JOB.id}/download`;
+  try {
+    // 그냥 링크로 두면 실패해도 오류 JSON 이 파일로 저장돼 원인을 알 수 없다
+    const r = await fetch(url);
+    if (!r.ok){
+      let m = '내려받을 수 없습니다.';
+      try { m = (await r.json()).detail || m; } catch(e){}
+      say('#fMsg', r.status === 404
+        ? m + ' 화면을 새로고침해 주세요 — 목록에 없는 작업일 수 있습니다.'
+        : m, 'err');
+      return;
+    }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = ((JOB.title || 'video').replace(/[\/:*?"<>|]/g, '_')) + '.mp4';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    say('#fMsg', '내려받았습니다.', 'ok');
+  } catch(e){ say('#fMsg', e.message, 'err'); }
+};
+
+$('#reFinish').onclick = () => runTask(
+  () => api(`/api/${JOB.id}/poster`, {method:'POST',
+        body:form({l1:$('#p1').value, l2:$('#p2').value, l3:$('#p3').value})}),
+  '#fMsg', '문구 반영');
+
+const FONT_SAMPLE = '다람쥐 헌 쳇바퀴에 타고파';
+let FONT_VALUE = '', PFONT_VALUE = '';
+
+function fontLabel(f){ return f || '모양 기본값 그대로'; }
+
+function buildPFontList(){
+  const items = [''].concat(FONTS.fonts);
+  $('#pFontList').innerHTML = items.map(f => `
+    <div class="it${f === PFONT_VALUE ? ' on' : ''}" data-f="${f}">
+      <div class="nm">${f || '기본 (맑은 고딕)'}</div>
+      <div class="sp" ${f ? `style="font-family:'${f}',sans-serif"` : ''}>${FONT_SAMPLE}</div>
+    </div>`).join('');
+  $('#pFontList').querySelectorAll('[data-f]').forEach(el => el.onclick = async () => {
+    PFONT_VALUE = el.dataset.f;
+    paintPFontBtn();
+    $('#pFontList').classList.remove('open');
+    JOB = await saveEndOptions();
+    markDirty();
+  });
+}
+
+function paintPFontBtn(){
+  $('#pFontBtn').innerHTML = `<span style="${PFONT_VALUE ?
+    `font-family:'${PFONT_VALUE}',sans-serif` : ''}">${
+    PFONT_VALUE ? FONT_SAMPLE : '기본 (맑은 고딕)'}</span><span class="cap">${
+    PFONT_VALUE || '기본'} ▾</span>`;
+}
+
+function buildFontList(){
+  const items = [''].concat(FONTS.fonts);
+  $('#subFontList').innerHTML = items.map(f => `
+    <div class="it${f === FONT_VALUE ? ' on' : ''}" data-f="${f}">
+      <div class="nm">${fontLabel(f)}</div>
+      <div class="sp" ${f ? `style="font-family:'${f}',sans-serif"` : ''}>${FONT_SAMPLE}</div>
+    </div>`).join('');
+  $('#subFontList').querySelectorAll('[data-f]').forEach(el => el.onclick = async () => {
+    FONT_VALUE = el.dataset.f;
+    paintFontBtn();
+    $('#subFontList').classList.remove('open');
+    const keep = collectSubs();
+    JOB = await saveSubStyle();
+    if (keep.length) JOB.subs = keep;
+  });
+}
+
+function paintFontBtn(){
+  const b = $('#subFontBtn');
+  b.innerHTML = `<span style="${FONT_VALUE ? `font-family:'${FONT_VALUE}',sans-serif` : ''}">${
+    FONT_VALUE ? FONT_SAMPLE : '모양 기본값 그대로'}</span><span class="cap">${
+    fontLabel(FONT_VALUE)} ▾</span>`;
+  $('#subFontList').querySelectorAll('[data-f]').forEach(el =>
+    el.classList.toggle('on', el.dataset.f === FONT_VALUE));
+}
+
+async function loadFonts(){
+  if (FONTS) return FONTS;
+  FONTS = await api('/api/fonts').catch(() => ({fonts:[], styles:[]}));
+  buildFontList();
+  buildPFontList();
+  $('#endKind').innerHTML = (FONTS.poster_kinds||[]).map(x =>
+    `<option value="${x.id}">${x.label}</option>`).join('');
+  $('#endPose').innerHTML = (FONTS.ending_poses||[]).map(x =>
+    `<option value="${x.id}">${x.label}</option>`).join('');
+  $('#styleMode').innerHTML = (FONTS.style_modes||[]).map(x =>
+    `<option value="${x.id}">${x.label}</option>`).join('');
+  $('#subStyle').innerHTML = FONTS.styles.map(s =>
+    `<option value="${s.id}">${s.label}</option>`).join('');
+  $('#camera').innerHTML = (FONTS.cameras||[]).map(c =>
+    `<option value="${c.id}">${c.label}</option>`).join('');
+  return FONTS;
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.fontpick')){
+    $('#subFontList').classList.remove('open');
+    $('#pFontList').classList.remove('open');
+  }
+});
+$('#subFontBtn').onclick = e => {
+  e.stopPropagation(); $('#pFontList').classList.remove('open');
+  $('#subFontList').classList.toggle('open');
+};
+$('#pFontBtn').onclick = e => {
+  e.stopPropagation(); $('#subFontList').classList.remove('open');
+  $('#pFontList').classList.toggle('open');
+};
+
+(async function init(){
+  const js = await api('/api/jobs');
+  JOB = js.length ? await api('/api/' + js[0].id) : await api('/api/new', {method:'POST'});
+  try {
+    const v = await api('/api/version');
+    const t = new Date(v.page_mtime * 1000);
+    $('#ver').textContent = '화면 ' + t.toTimeString().slice(0,5) + ' 판';
+  } catch(e){}
+  await loadFonts();
+  render(); await loadBar();
+  // 새로고침해도 돌고 있는 작업을 이어서 보여준다
+  const t = await api(`/api/${JOB.id}/task`).catch(() => ({state:'idle'}));
+  if (t.state === 'running') runTask(async()=>{}, '#rMsg', t.label || '작업');
+})();
+</script>

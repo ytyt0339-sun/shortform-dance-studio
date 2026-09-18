@@ -1,0 +1,15 @@
+app/studio_runs/
+app/runs/
+app/fonts/
+app/pose_landmarker_full.task
+app/static/
+_manual_assets/
+scratchpad/
+*.log
+*.bak*
+__pycache__/
+*.pyc
+*.pptx
+api_key.txt
+.env
+.git/

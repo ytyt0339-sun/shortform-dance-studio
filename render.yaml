@@ -1,0 +1,22 @@
+# Render 에 올릴 때 쓰는 설정. 저장소를 연결하면 이 파일을 읽어 그대로 만든다.
+# (Railway·Fly.io 도 Dockerfile 만 있으면 비슷하게 돌아간다)
+services:
+  - type: web
+    name: shortform-dance-studio
+    runtime: docker
+    plan: standard          # mediapipe 가 메모리를 먹는다. 2GB 이상 권장
+    numInstances: 1         # 반드시 1대. 작업 상태를 그 인스턴스 안에 들고 있다
+    healthCheckPath: /api/version
+    disk:
+      name: runs
+      mountPath: /data      # 만든 영상이 여기 쌓인다. 없으면 재시작 때 사라진다
+      sizeGB: 20
+    envVars:
+      - key: FAL_KEY
+        sync: false         # 대시보드에서 직접 넣는다. 저장소에 두지 않는다
+      - key: HOST
+        value: 0.0.0.0
+      - key: RUNS_DIR
+        value: /data/runs
+      - key: KEEP_HOURS
+        value: "336"        # 14일 뒤 자동 삭제

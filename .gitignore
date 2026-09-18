@@ -1,0 +1,27 @@
+# 실수로 뭔가 올라가는 일이 없도록, 전부 무시하고 필요한 것만 되살린다.
+# (키 파일, 사용자 영상, 실험용 스크립트가 섞여 있는 폴더라 이 방식이 안전하다)
+/*
+
+!.gitignore
+!.dockerignore
+!Dockerfile
+!requirements.txt
+!render.yaml
+!README.md
+
+!app/
+app/*
+!app/studio.py
+!app/pipeline.py
+!app/reference.py
+!app/video.py
+!app/poster_text.py
+!app/get_fonts.py
+
+!app/static_studio/
+app/static_studio/*
+!app/static_studio/index.html
+!app/static_studio/sample/
+app/static_studio/sample/*
+!app/static_studio/sample/style_3d.jpg
+!app/static_studio/sample/style_doodle.jpg
