@@ -52,6 +52,7 @@ app = FastAPI(title="캐릭터 댄스 스튜디오")
 # 브라우저마다 하나씩 주는 세션. 로그인 대신 이걸로 작업을 가른다.
 SID_COOKIE = "studio_sid"
 _SID = contextvars.ContextVar("sid", default="")
+_IP = contextvars.ContextVar("ip", default="")
 # 이 시간이 지난 작업은 자동으로 지운다. 배포한 곳에서 KEEP_HOURS 로 바꿀 수 있다.
 KEEP_HOURS = int(os.environ.get("KEEP_HOURS") or 24 * 14)
 SWEEP_MIN = 30           # 청소 주기
@@ -63,11 +64,16 @@ async def session_mw(request, call_next):
     fresh = not sid
     if fresh:
         sid = uuid.uuid4().hex
+    # 앞단에 프록시(Hugging Face, Render)가 있으면 진짜 IP 는 헤더에 들어온다
+    fwd = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    ip = fwd or (request.client.host if request.client else "")
     token = _SID.set(sid)
+    ip_token = _IP.set(ip)
     try:
         resp = await call_next(request)
     finally:
         _SID.reset(token)
+        _IP.reset(ip_token)
     if fresh:
         resp.set_cookie(SID_COOKIE, sid, max_age=60 * 60 * 24 * 30,
                         httponly=True, samesite="lax")
@@ -76,6 +82,10 @@ async def session_mw(request, call_next):
 
 def sid():
     return _SID.get()
+
+
+def client_ip():
+    return _IP.get()
 
 
 def sweep():
@@ -143,6 +153,9 @@ def score_check(job):
 # 키 하나로 여러 사람이 쓰므로, 한 사람이 계속 만들면 그대로 비용이 된다.
 # 세션(브라우저) 단위로 하루 몇 편까지만 만들 수 있게 막는다.
 DAILY_VIDEOS = int(os.environ.get("DAILY_VIDEOS") or 2)   # 하루에 만들 수 있는 편수
+# 쿠키는 지우면 초기화되므로 접속한 곳(IP) 기준으로도 센다.
+# 학교나 회사처럼 여러 사람이 한 IP 를 쓰는 경우가 있어 조금 넉넉하게 둔다.
+DAILY_VIDEOS_IP = int(os.environ.get("DAILY_VIDEOS_IP") or DAILY_VIDEOS * 2)
 REDO_LIMIT = int(os.environ.get("REDO_LIMIT") or 1)       # 한 편을 다시 만들 수 있는 횟수
 USAGE_FILE = RUNS / "_usage.json"
 _USAGE_LOCK = threading.Lock()
@@ -184,11 +197,19 @@ def usage_bump(who, n=1):
         return u
 
 
+def quota_left():
+    """세션과 IP 중 더 빡빡한 쪽이 남은 편수다."""
+    by_sid = DAILY_VIDEOS - usage_of(sid())["videos"]
+    ip = client_ip()
+    by_ip = DAILY_VIDEOS_IP - usage_of("ip:" + ip)["videos"] if ip else DAILY_VIDEOS
+    return max(0, min(by_sid, by_ip))
+
+
 @app.get("/api/quota")
 def quota():
     u = usage_of(sid())
     return {"made": u["videos"], "limit": DAILY_VIDEOS,
-            "left": max(0, DAILY_VIDEOS - u["videos"]), "redo": REDO_LIMIT}
+            "left": quota_left(), "redo": REDO_LIMIT}
 
 
 def job_dir(jid):
@@ -1123,11 +1144,13 @@ def render(jid: str, with_ending: str = Form("true"), confirm_low: str = Form("f
         raise HTTPException(429, "이 영상은 다시 만들기를 %d번까지 할 수 있습니다. "
                                  "자막·글꼴·카메라는 다시 만들지 않아도 바꿀 수 있습니다."
                                  % REDO_LIMIT)
-    me = sid()
-    if usage_of(me)["videos"] >= DAILY_VIDEOS:
+    me, ip = sid(), client_ip()
+    if quota_left() <= 0:
         raise HTTPException(429, "오늘 만들 수 있는 %d편을 다 쓰셨습니다. "
                                  "내일 다시 이용해 주세요." % DAILY_VIDEOS)
     usage_bump(me, 1)
+    if ip:
+        usage_bump("ip:" + ip, 1)
     want_ending = (with_ending == "true")
 
     def work():
@@ -1135,6 +1158,8 @@ def render(jid: str, with_ending: str = Form("true"), confirm_low: str = Form("f
             _render(jid, d, want_ending)
         except Exception:
             usage_bump(me, -1)      # 실패한 것은 쓴 것으로 치지 않는다
+            if ip:
+                usage_bump("ip:" + ip, -1)
             raise
 
     return run_task(jid, "영상 만들기", work)

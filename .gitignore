@@ -25,3 +25,5 @@ app/static_studio/*
 app/static_studio/sample/*
 !app/static_studio/sample/style_3d.jpg
 !app/static_studio/sample/style_doodle.jpg
+!_hf_space/
+_hf_space/*
