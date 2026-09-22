@@ -19,6 +19,14 @@
   // (저장소 코드를 고치면 바로 반영되도록 /srv 사본이 아니라 작업폴더에서 돌린다)
   "postCreateCommand": "bash .devcontainer/setup.sh",
 
+  // Codespace 를 켤 때마다 웹앱이 저절로 뜬다 (터미널에 안 들어가도 된다)
+  "postStartCommand": "nohup bash .devcontainer/run.sh > /tmp/start.log 2>&1 &",
+
+  // gh 명령으로 컨테이너 안을 들여다볼 수 있게
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": { "version": "latest" }
+  },
+
   "forwardPorts": [8020],
   "portsAttributes": {
     "8020": { "label": "웹앱", "onAutoForward": "notify" }
