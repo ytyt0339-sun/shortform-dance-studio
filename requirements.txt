@@ -12,5 +12,8 @@ numpy==2.4.6
 opencv-python-headless==5.0.0.93
 fonttools==4.63.0
 
+# 엔딩 포스터에서 표지판 자리를 찾을 때 쓴다 (없으면 엔딩 만들기가 실패한다)
+scipy==1.15.3
+
 # 춤 영상 채점 (자세 인식)
 mediapipe==1.0.1

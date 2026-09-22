@@ -30,6 +30,7 @@ RUNS.mkdir(parents=True, exist_ok=True)
 
 import sys
 sys.path.insert(0, str(APP))
+import ops
 import pipeline as pl
 import reference as rf
 import store
@@ -415,6 +416,21 @@ def sync_up(jid, d):
     return n
 
 
+def say_to(jid):
+    """ops 가 알려오는 진행 상황을 화면 쪽 기록으로 옮기는 다리."""
+    def say(msg=None, done=None, total=None):
+        kw = {}
+        if msg is not None:
+            kw["msg"] = msg
+        if done is not None:
+            kw["done"] = done
+        if total is not None:
+            kw["total"] = total
+        if kw:
+            task_set(jid, **kw)
+    return say
+
+
 def run_task(jid, label, fn):
     if task_busy(jid):
         raise HTTPException(409, "이미 다른 작업이 진행 중입니다.")
@@ -715,22 +731,7 @@ def cleanup_character(jid: str, feedback: str = Form("")):
                                  "화풍을 바꾸거나 그대로 진행해주세요.")
 
     def work():
-        j = read_job(jid)
-        src = d / (j.get("character_raw") or j["character"])
-        if not j.get("character_raw"):
-            raw = d / ("raw" + src.suffix)
-            raw.write_bytes(src.read_bytes())
-            j["character_raw"] = raw.name
-            src = raw
-        task_set(jid, msg="그림을 캐릭터로 다듬는 중")
-        out = d / "character_clean.png"
-        pl.clean_sketch(str(src), str(out), feedback=feedback)
-        j["char_feedback"] = feedback.strip()
-        j["character"] = out.name
-        j["character_n"] = j.get("character_n", 0) + 1
-        j["keycut"] = None
-        j["keycut_approved"] = False
-        j["spent"] = round(j.get("spent", 0) + pl.NB_PRICE, 3)
+        j = ops.clean_character(d, read_job(jid), feedback, say_to(jid))
         write_job(jid, j)
 
     return run_task(jid, "그림 다듬기", work)
@@ -772,23 +773,7 @@ def make_keycut(jid: str, bg_prompt: str = Form(""), feedback: str = Form("")):
         raise HTTPException(400, "배경 설명을 쓰거나 장소 사진을 올려주세요.")
 
     def work():
-        j = read_job(jid)
-        n = j.get("keycut_n", 0) + 1
-        out = d / ("keycut%d.png" % n)
-        task_set(jid, msg="장면 안에 캐릭터를 그리는 중")
-        photo = (d / j["bg_photo"]) if j.get("bg_photo") else None
-        pl.keycut(str(d / j["character"]), bg_prompt, str(out),
-                  place_photo=(str(photo) if photo else None),
-                  style_mode=j.get("style_mode", "3d"),
-                  feedback=feedback)
-        j["bg_prompt"] = bg_prompt
-        j["bg_feedback"] = feedback.strip()
-        j["keycut"] = out.name
-        j["keycut_n"] = n
-        j["keycut_approved"] = False
-        j["spent"] = round(j.get("spent", 0) + pl.NB_PRICE, 3)
-        if j.get("title") == "새 영상":
-            j["title"] = (bg_prompt.strip() or "사진 배경")[:24]
+        j = ops.make_keycut(d, read_job(jid), bg_prompt, feedback, say_to(jid))
         write_job(jid, j)
 
     return run_task(jid, "키컷 만들기", work)
@@ -830,26 +815,7 @@ async def set_reference(jid: str, file: UploadFile = File(...)):
     write_job(jid, job)
 
     def work():
-        j = read_job(jid)
-        task_set(jid, msg="인물을 찾아 세로로 자르는 중")
-        box = rf.auto_crop(str(d / name), str(APP))
-        dur = min(rf.MAX_DUR, rf.probe(d / name)["duration"])
-        rf.make_plate(str(d / name), str(d / "plate.mp4"), 0.0, dur, box)
-        j["crop"] = box
-        j["clip_start"] = 0.0
-        j["clip_dur"] = round(dur, 1)
-        j["seg_recs"] = None
-        task_set(jid, msg="적합도 채점 중")
-        res = rf.analyze(str(d / "plate.mp4"), str(APP))
-        vd.thumb_sheet(str(d / "plate.mp4"), str(d / "plate_sheet.jpg"))
-        j["plate"] = "plate.mp4"
-        j["clip_score"] = res
-        j["segments"] = max(1, int(dur // pl.CUT_SEC))
-        # 레퍼런스에 소리가 있으면 뽑아둔다. 그 영상에서 동작을 따왔으므로 박자가 맞는다.
-        if pl.has_audio(d / name):
-            task_set(jid, msg="레퍼런스 소리 추출 중")
-            if pl.extract_audio(d / name, d / "ref_audio.mp3"):
-                j["ref_audio"] = "ref_audio.mp3"
+        j = ops.analyze_reference(d, read_job(jid), name, say_to(jid), APP)
         write_job(jid, j)
 
     return run_task(jid, "레퍼런스 분석", work)
@@ -864,20 +830,7 @@ def scan_segments(jid: str):
         raise HTTPException(400, "먼저 춤 영상을 올려주세요.")
 
     def work():
-        j = read_job(jid)
-        src = d / j["reference"]
-        want = min(rf.MAX_DUR, rf.probe(src)["duration"])
-        # 실제로 만들어질 화면(세로 크롭)에서 재야 점수가 맞는다
-        task_set(jid, msg="세로로 잘라 훑는 중")
-        box = j.get("crop") or rf.auto_crop(str(src), str(APP))
-        j["crop"] = box
-        full = min(180.0, rf.probe(src)["duration"])
-        rf.make_plate(str(src), str(d / "scan.mp4"), 0.0, full, box)
-        task_set(jid, msg="구간별로 점수 내는 중", done=0, total=0)
-        recs = rf.recommend(str(d / "scan.mp4"), str(APP), want=want, step=3.0, top=6,
-                            progress=lambda i, n: task_set(jid, done=i, total=n))
-        (d / "scan.mp4").unlink(missing_ok=True)
-        j["seg_recs"] = recs
+        j = ops.scan_segments(d, read_job(jid), say_to(jid), APP)
         write_job(jid, j)
 
     return run_task(jid, "좋은 구간 찾기", work)
@@ -896,20 +849,7 @@ def pick_segment(jid: str, start: str = Form("0")):
         raise HTTPException(400, "구간 시작 시각이 잘못됐습니다.")
 
     def work():
-        j = read_job(jid)
-        src = d / j["reference"]
-        info = rf.probe(src)
-        dur = min(rf.MAX_DUR, max(rf.MIN_DUR, info["duration"] - t0))
-        box = j.get("crop") or rf.auto_crop(str(src), str(APP))
-        task_set(jid, msg="고른 구간으로 다시 자르는 중")
-        rf.make_plate(str(src), str(d / "plate.mp4"), t0, dur, box)
-        task_set(jid, msg="적합도 채점 중")
-        j["clip_score"] = rf.analyze(str(d / "plate.mp4"), str(APP))
-        vd.thumb_sheet(str(d / "plate.mp4"), str(d / "plate_sheet.jpg"))
-        j["crop"] = box
-        j["clip_start"] = round(t0, 1)
-        j["clip_dur"] = round(dur, 1)
-        j["segments"] = max(1, int(dur // pl.CUT_SEC))
+        j = ops.pick_segment(d, read_job(jid), t0, say_to(jid), APP)
         write_job(jid, j)
 
     return run_task(jid, "구간 적용", work)
@@ -971,15 +911,7 @@ def set_options(jid: str, music_src: str = Form(None), one_shot: str = Form(None
 
 
 def audio_for(job, d):
-    """실제로 깔 소리를 고른다."""
-    src = job.get("music_src", "reference")
-    if src == "none":
-        return None
-    if src == "file" and job.get("music"):
-        return d / job["music"]
-    if job.get("ref_audio"):
-        return d / job["ref_audio"]
-    return (d / job["music"]) if job.get("music") else None
+    return ops.audio_for(d, job)
 
 
 @app.post("/api/{jid}/poster")
@@ -998,17 +930,9 @@ def set_poster(jid: str, l1: str = Form(""), l2: str = Form(""), l3: str = Form(
         return jj
     if job.get("ending_raw") and (d / job["ending_raw"]).exists():
         def work():
-            j = read_job(jid)
-            task_set(jid, msg="포스터 글자 얹는 중")
-            pl.poster_text(d / j["ending_raw"], j["poster"], d / "ending.mp4",
-                           custom=poster_custom(j, d), **poster_design(j),
-                           progress=lambda i, n: task_set(jid, done=i, total=n))
-            j["ending"] = "ending.mp4"
+            j = ops.apply_poster_text(d, read_job(jid), say_to(jid))
             if j.get("result"):
-                task_set(jid, msg="영상 다시 합치는 중", done=0, total=0)
-                pl.finish([d / c for c in j["cuts"]], d / "ending.mp4",
-                          audio_for(j, d), d / "final_raw.mp4")
-                apply_subs(j, d)
+                ops.finish_video(d, j, say_to(jid))
             write_job(jid, j)
         return run_task(jid, "포스터 문구 반영", work)
     return job
@@ -1061,17 +985,11 @@ def poster_preview(jid: str):
 
 
 def poster_design(j):
-    return dict(accent=j.get("poster_accent"), bg=j.get("poster_bg"), ink=j.get("poster_ink"),
-                font=pl.font_file(j.get("poster_font")), bar=j.get("poster_bar", True))
+    return ops.poster_design(j)
 
 
 def poster_custom(j, d):
-    """포스터는 앱 안에서 만든 것만 쓴다.
-
-    직접 올린 파일을 심었더니 그 안의 인물 사진 때문에 생성 모델이 장면을
-    거부했다. 만드는 쪽으로 통일하면 이 실패가 없어지고 디자인도 일관된다.
-    """
-    return None
+    return ops.poster_custom(d, j)
 
 
 @app.post("/api/{jid}/ending/photo")
@@ -1095,67 +1013,15 @@ async def set_ending_photo(jid: str, file: UploadFile = File(None), clear: str =
 
 
 def _make_still(j, d, jid):
-    n = j.get("ending_still_n", 0) + 1
-    out = d / ("poster%d.png" % n)
-    photo = (d / j["ending_photo"]) if j.get("ending_photo") else None
-    pl.poster_scene(str(d / j["keycut"]), j.get("bg_prompt", ""), str(out),
-                    kind=j.get("ending_kind", "wall"),
-                    pose=j.get("ending_pose", "point"),
-                    scene=j.get("ending_scene") or None,
-                    free=j.get("ending_prompt") or None,
-                    place_photo=(str(photo) if photo else None),
-                    style_mode=j.get("style_mode", "3d"))
-    j["ending_still"] = out.name
-    j["ending_still_n"] = n
-    j["spent"] = round(j.get("spent", 0) + pl.NB_PRICE, 3)
-    j["ending_baked"] = None
-    _bake(j, d)
-    return out
+    return ops.make_still(d, j, say_to(jid))
 
 
 def _bake(j, d):
-    """포스터를 심은 장면 그림. 실패해도 장면 자체는 살려둔다."""
-    if j.get("poster_mode", "bake") != "bake" or not j.get("ending_still"):
-        return None
-    try:
-        out = d / "poster_baked.png"
-        pl.bake_poster(d / j["ending_still"], j.get("poster") or ["", "", ""], out,
-                       custom=poster_custom(j, d), **poster_design(j))
-        j["ending_baked"] = out.name
-        return out
-    except Exception as e:
-        j["ending_baked"] = None
-        print("포스터 심기 실패:", e)
-        return None
+    return ops.bake_poster(d, j)
 
 
 def build_ending(j, d, jid):
-    """엔딩 영상을 만든다. 세 군데서 같은 것을 쓰도록 한 곳에 모았다.
-
-    심는 방식이면 포스터를 넣은 그림으로 영상을 만들고, 그 뒤에 글자를 또 얹지 않는다.
-    (얹으면 두 번 들어가고, 원본 분홍 그림을 쓰면 분홍이 그대로 남는다)
-    """
-    import shutil as _sh
-    if not j.get("ending_still"):
-        _make_still(j, d, jid)
-    baked = _bake(j, d) if j.get("poster_mode", "bake") == "bake" else None
-    src = baked or (d / j["ending_still"])
-
-    task_set(jid, msg="엔딩 영상 만드는 중")
-    pl.poster_video(str(src), str(d / "ending_raw.mp4"),
-                    sec=j.get("ending_sec", 4), baked=bool(baked))
-    j["ending_raw"] = "ending_raw.mp4"
-    j["spent"] = round(j.get("spent", 0) + pl.POSTER_VID_PRICE, 3)
-
-    if baked:
-        _sh.copy(str(d / "ending_raw.mp4"), str(d / "ending.mp4"))
-    else:
-        task_set(jid, msg="포스터 글자 얹는 중")
-        pl.poster_text(d / "ending_raw.mp4", j.get("poster") or ["", "", ""],
-                       d / "ending.mp4", **poster_design(j),
-                       progress=lambda i, n: task_set(jid, done=i, total=n))
-    j["ending"] = "ending.mp4"
-    return "ending.mp4"
+    return ops.build_ending(d, j, say_to(jid))
 
 
 @app.post("/api/{jid}/ending/still")
@@ -1187,10 +1053,7 @@ def make_ending_video(jid: str):
         j = read_job(jid)
         build_ending(j, d, jid)
         if j.get("result") and (d / "final_raw.mp4").exists():
-            task_set(jid, msg="영상 다시 합치는 중", done=0, total=0)
-            pl.finish([d / c for c in j["cuts"]], d / "ending.mp4",
-                      audio_for(j, d), d / "final_raw.mp4")
-            apply_subs(j, d)
+            ops.finish_video(d, j, say_to(jid))
         write_job(jid, j)
 
     return run_task(jid, "엔딩 영상 만들기", work)
@@ -1210,10 +1073,7 @@ def make_ending(jid: str):
         _make_still(j, d, jid)
         build_ending(j, d, jid)
         if j.get("result") and (d / "final_raw.mp4").exists():
-            task_set(jid, msg="영상 다시 합치는 중", done=0, total=0)
-            pl.finish([d / c for c in j["cuts"]], d / "ending.mp4",
-                      audio_for(j, d), d / "final_raw.mp4")
-            apply_subs(j, d)
+            ops.finish_video(d, j, say_to(jid))
         write_job(jid, j)
 
     return run_task(jid, "엔딩 만들기", work)
@@ -1231,11 +1091,7 @@ def gen_subs(jid: str):
         raise HTTPException(400, "먼저 춤 영상이나 음악 파일을 올려주세요.")
 
     def work():
-        j = read_job(jid)
-        task_set(jid, msg="가사를 받아쓰는 중")
-        j["subs"] = pl.transcribe(src)
-        j["subs_on"] = True
-        j["spent"] = round(j.get("spent", 0) + pl.STT_PRICE, 3)
+        j = ops.make_lyrics(d, read_job(jid), say_to(jid))
         write_job(jid, j)
 
     return run_task(jid, "가사 자막 만들기", work)
@@ -1266,28 +1122,7 @@ def save_subs(jid: str, subs: str = Form("[]"), subs_on: str = Form("true")):
 
 
 def apply_subs(j, d):
-    """원본(final_raw)에 카메라 무빙과 자막을 입혀 최종본을 만든다.
-
-    생성이 아니라 후처리라서 몇 번이든 무료로 다시 할 수 있다.
-    카메라를 먼저 걸고 자막을 나중에 얹어야 자막이 같이 흔들리지 않는다.
-    """
-    import shutil as _sh
-    raw = d / "final_raw.mp4"
-    cam = d / "final_cam.mp4"
-    pl.camera_move(raw, cam, j.get("camera", "normal"))
-    if j.get("subs_on") and j.get("subs"):
-        pl.burn_subs(cam, j["subs"], d / "final.mp4",
-                     style=j.get("subs_style", "soft"),
-                     font=(j.get("subs_font") or None),
-                     size=(j.get("subs_size") or None),
-                     pos=j.get("subs_pos", "top"),
-                     color=j.get("subs_color"),
-                     outline_color=j.get("subs_outline_color"),
-                     outline=j.get("subs_outline"),
-                     bold=j.get("subs_bold"))
-    else:
-        _sh.copy(str(cam), str(d / "final.mp4"))
-    j["result"] = "final.mp4"
+    return ops.apply_subs(d, j)
 
 
 @app.post("/api/{jid}/subtitles/restyle")
@@ -1467,11 +1302,8 @@ def _finish_up(jid, d, owner):
                 ending = build_ending(j, d, jid)
             write_job(jid, j)
 
-        pl.finish([d / c for c in j["cuts"]], (d / ending) if ending else None,
-                  audio_for(j, d), d / "final_raw.mp4")
-        if j.get("subs_on") and j.get("subs"):
-            task_set(jid, msg="자막 굽는 중")
-        apply_subs(j, d)
+        j["ending"] = ending
+        ops.finish_video(d, j, say_to(jid))
         j["pending"] = None
         write_job(jid, j)
         sync_up(jid, d)

@@ -143,6 +143,84 @@ def drop(rel_prefix):
     return n
 
 
+def list_keys(rel_prefix):
+    """저장소에 있는 파일 목록. (작업 폴더 안의 상대 경로로 돌려준다)"""
+    if not enabled():
+        return []
+    c = _s3()
+    pre = _key(rel_prefix)
+    out, token = [], None
+    while True:
+        kw = {"Bucket": BUCKET, "Prefix": pre}
+        if token:
+            kw["ContinuationToken"] = token
+        r = c.list_objects_v2(**kw)
+        for o in r.get("Contents", []):
+            out.append(o["Key"][len(_key("")):])
+        if not r.get("IsTruncated"):
+            return out
+        token = r.get("NextContinuationToken")
+
+
+def sync_down(rel_prefix, local_dir, only=None):
+    """작업 폴더를 저장소에서 통째로 내려받는다.
+
+    람다는 매번 빈 손으로 깨어난다. 일을 시작하기 전에 필요한 파일을 받아 온다.
+    only 를 주면 그 이름들만 받는다 (큰 영상을 괜히 받지 않도록).
+    """
+    if not enabled():
+        return 0
+    d = Path(local_dir)
+    n = 0
+    for rel in list_keys(rel_prefix):
+        name = rel[len(str(rel_prefix).rstrip("/")) + 1:]
+        if only is not None and name not in only:
+            continue
+        p = d / name
+        if p.exists() and p.stat().st_size > 0:
+            continue
+        p.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            _s3().download_file(BUCKET, _key(rel), str(p))
+            n += 1
+        except Exception as e:
+            print("내려받기 실패:", rel, str(e)[:80])
+    return n
+
+
+def snapshot(local_dir):
+    """지금 폴더 상태를 적어 둔다. 일이 끝난 뒤 무엇이 새로 생겼는지 알려고."""
+    d = Path(local_dir)
+    out = {}
+    for f in d.rglob("*"):
+        if f.is_file():
+            st = f.stat()
+            out[str(f.relative_to(d)).replace("\\", "/")] = (st.st_mtime_ns, st.st_size)
+    return out
+
+
+def sync_up(local_dir, rel_prefix, before=None):
+    """일하면서 새로 생기거나 바뀐 파일만 저장소로 올린다."""
+    if not enabled():
+        return []
+    d = Path(local_dir)
+    before = before or {}
+    sent = []
+    for f in sorted(d.rglob("*")):
+        if not f.is_file():
+            continue
+        rel = str(f.relative_to(d)).replace("\\", "/")
+        st = f.stat()
+        if before.get(rel) == (st.st_mtime_ns, st.st_size):
+            continue
+        try:
+            put(f, "%s/%s" % (str(rel_prefix).rstrip("/"), rel))
+            sent.append(rel)
+        except Exception as e:
+            print("올리기 실패:", rel, str(e)[:80])
+    return sent
+
+
 def copy_in(src, local_path, rel):
     """올라온 파일을 작업 폴더에 두고 저장소에도 올린다."""
     p = Path(local_path)
