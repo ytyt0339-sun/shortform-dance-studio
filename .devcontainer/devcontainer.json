@@ -8,7 +8,8 @@
   "containerEnv": {
     "HOST": "0.0.0.0",
     "PORT": "8020",
-    "RUNS_DIR": "/tmp/runs",
+    // /tmp 는 껐다 켜면 비워진다. 만든 영상이 남도록 /workspaces 에 둔다
+    "RUNS_DIR": "/workspaces/runs",
     "KEEP_HOURS": "336",
     "DAILY_VIDEOS": "2",
     "DAILY_VIDEOS_IP": "4",
@@ -20,7 +21,7 @@
   "postCreateCommand": "bash .devcontainer/setup.sh",
 
   // Codespace 를 켤 때마다 웹앱이 저절로 뜬다 (터미널에 안 들어가도 된다)
-  "postStartCommand": "nohup bash .devcontainer/run.sh > /tmp/start.log 2>&1 &",
+  "postStartCommand": "bash .devcontainer/run.sh",
 
   // gh 명령으로 컨테이너 안을 들여다볼 수 있게
   "features": {
