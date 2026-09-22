@@ -47,7 +47,23 @@ v2/app/static_studio/*
 v2/app/static_studio/sample/*
 !v2/app/static_studio/sample/style_3d.jpg
 !v2/app/static_studio/sample/style_doodle.jpg
+!v2/app/ops.py
 !v2/Dockerfile
 !v2/requirements.txt
+!v2/.dockerignore
+!v2/deploy_cloudrun.sh
+!v2/lambda/
+v2/lambda/*
+!v2/lambda/Dockerfile
+!v2/lambda/handler.py
+!v2/lambda/requirements.txt
+
+# Cloudflare Worker (화면·API). node_modules 는 뺀다.
+!worker/
+worker/*
+!worker/src/
+!worker/src/*.js
+!worker/wrangler.toml
+!worker/package.json
 
 !.devcontainer/
