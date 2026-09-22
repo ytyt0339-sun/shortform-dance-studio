@@ -11,8 +11,8 @@
     // /tmp 는 껐다 켜면 비워진다. 만든 영상이 남도록 /workspaces 에 둔다
     "RUNS_DIR": "/workspaces/runs",
     "KEEP_HOURS": "336",
-    "DAILY_VIDEOS": "2",
-    "DAILY_VIDEOS_IP": "4",
+    "DAILY_VIDEOS": "9999",
+    "DAILY_VIDEOS_IP": "9999",
     "REDO_LIMIT": "1"
   },
 

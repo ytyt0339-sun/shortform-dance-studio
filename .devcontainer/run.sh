@@ -13,6 +13,10 @@ if [ -z "$FAL_KEY" ]; then
   echo "!! FAL_KEY 가 없습니다 (GitHub > Settings > Codespaces > Secrets)"
 fi
 
+# 하루 편수 제한을 풀어 둔다 (시험 중). 다시 걸려면 2 / 4 로 되돌리면 된다.
+export DAILY_VIDEOS=9999
+export DAILY_VIDEOS_IP=9999
+
 # 기록은 /workspaces 에 남긴다. /tmp 는 껐다 켜면 비워진다.
 LOG=/workspaces/app.log
 
