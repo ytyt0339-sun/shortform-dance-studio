@@ -1,0 +1,30 @@
+{
+  "name": "숏폼 댄스 스튜디오",
+
+  // v2 의 Dockerfile 을 그대로 쓴다. ffmpeg, 한글 글꼴, 자세 인식 모델이
+  // 이미 들어 있어서 따로 설치할 게 없다.
+  "build": { "dockerfile": "../v2/Dockerfile", "context": "../v2" },
+
+  "containerEnv": {
+    "HOST": "0.0.0.0",
+    "PORT": "8020",
+    "RUNS_DIR": "/tmp/runs",
+    "KEEP_HOURS": "336",
+    "DAILY_VIDEOS": "2",
+    "DAILY_VIDEOS_IP": "4",
+    "REDO_LIMIT": "1"
+  },
+
+  // 이미지 안에 구워진 글꼴과 모델을 저장소 쪽 코드가 쓰도록 이어준다.
+  // (저장소 코드를 고치면 바로 반영되도록 /srv 사본이 아니라 작업폴더에서 돌린다)
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
+  "forwardPorts": [8020],
+  "portsAttributes": {
+    "8020": { "label": "웹앱", "onAutoForward": "notify" }
+  },
+
+  "customizations": {
+    "vscode": { "extensions": ["ms-python.python"] }
+  }
+}

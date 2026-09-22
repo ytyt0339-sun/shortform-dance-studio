@@ -27,3 +27,27 @@ app/static_studio/sample/*
 !app/static_studio/sample/style_doodle.jpg
 !_hf_space/
 _hf_space/*
+
+# 새 구조(v2) — Codespaces 가 이걸 돌린다
+!v2/
+v2/*
+!v2/app/
+v2/app/*
+!v2/app/studio.py
+!v2/app/pipeline.py
+!v2/app/reference.py
+!v2/app/video.py
+!v2/app/poster_text.py
+!v2/app/get_fonts.py
+!v2/app/store.py
+!v2/app/static_studio/
+v2/app/static_studio/*
+!v2/app/static_studio/index.html
+!v2/app/static_studio/sample/
+v2/app/static_studio/sample/*
+!v2/app/static_studio/sample/style_3d.jpg
+!v2/app/static_studio/sample/style_doodle.jpg
+!v2/Dockerfile
+!v2/requirements.txt
+
+!.devcontainer/

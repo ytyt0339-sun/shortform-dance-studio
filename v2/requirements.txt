@@ -1,0 +1,19 @@
+# 웹 서버
+fastapi==0.133.1
+uvicorn[standard]==0.41.0
+python-multipart==0.0.27
+
+# 생성 모델 호출
+fal-client==0.13.1
+
+# 이미지 · 영상 처리
+pillow==12.2.0
+numpy==2.4.6
+opencv-python-headless==5.0.0.93
+fonttools==4.63.0
+
+# 춤 영상 채점 (자세 인식)
+mediapipe==1.0.1
+
+# 파일을 S3 나 Cloudflare R2 에 둘 때만 쓴다 (STORE=s3). local 모드면 없어도 된다.
+boto3==1.42.89

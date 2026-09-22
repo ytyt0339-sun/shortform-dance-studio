@@ -19,7 +19,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 APP = Path(__file__).parent
@@ -32,6 +32,7 @@ import sys
 sys.path.insert(0, str(APP))
 import pipeline as pl
 import reference as rf
+import store
 import video as vd
 
 
@@ -102,10 +103,13 @@ def sweep():
     """오래된 작업을 지운다. 결과물은 받아가는 것으로 끝이라 쌓아둘 이유가 없다."""
     cut = time.time() - KEEP_HOURS * 3600
     for d in list(RUNS.iterdir()):
+        if d.name == "usage" or not d.is_dir():
+            continue                      # 사용량 기록은 따로 치운다
         try:
             f = d / "job.json"
             if not f.exists() or f.stat().st_mtime < cut:
                 shutil.rmtree(d, ignore_errors=True)
+                store.drop(d.name + "/")        # 저장소 쪽도 함께 비운다
         except Exception:
             pass
 
@@ -115,6 +119,7 @@ def _sweeper():
         time.sleep(SWEEP_MIN * 60)
         try:
             sweep()
+            usage_sweep()
         except Exception:
             pass
 
@@ -167,7 +172,6 @@ DAILY_VIDEOS = int(os.environ.get("DAILY_VIDEOS") or 2)   # 하루에 만들 수
 # 학교나 회사처럼 여러 사람이 한 IP 를 쓰는 경우가 있어 조금 넉넉하게 둔다.
 DAILY_VIDEOS_IP = int(os.environ.get("DAILY_VIDEOS_IP") or DAILY_VIDEOS * 2)
 REDO_LIMIT = int(os.environ.get("REDO_LIMIT") or 1)       # 한 편을 다시 만들 수 있는 횟수
-USAGE_FILE = RUNS / "_usage.json"
 _USAGE_LOCK = threading.Lock()
 
 
@@ -175,36 +179,51 @@ def _today():
     return time.strftime("%Y-%m-%d")
 
 
-def _usage_all():
-    try:
-        return json.loads(USAGE_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+def _usage_key(who):
+    """사람마다 파일 하나. 한 파일에 전부 몰아넣으면 서버가 여러 대일 때
+    같은 파일을 동시에 고쳐 서로의 기록을 덮어쓴다."""
+    import hashlib
+    h = hashlib.sha1(str(who).encode("utf-8")).hexdigest()[:16]
+    return "usage/%s/%s.json" % (_today(), h)
 
 
 def usage_of(who):
     """오늘 이 사람이 만든 편수. 날짜가 바뀌면 0 부터 다시 센다."""
-    u = _usage_all().get(who) or {}
-    if u.get("date") != _today():
+    rel = _usage_key(who)
+    p = RUNS / rel
+    if not p.exists():
+        store.get(rel, p)              # 다른 서버가 센 것이 있을 수 있다
+    try:
+        u = json.loads(p.read_text(encoding="utf-8"))
+        return {"date": _today(), "videos": int(u.get("videos", 0))}
+    except Exception:
         return {"date": _today(), "videos": 0}
-    return {"date": u["date"], "videos": int(u.get("videos", 0))}
 
 
 def usage_bump(who, n=1):
     """만들기 시작할 때 +1, 실패하면 -1 로 되돌린다."""
     with _USAGE_LOCK:
-        all_ = _usage_all()
-        u = all_.get(who) or {}
-        if u.get("date") != _today():
-            u = {"date": _today(), "videos": 0}
-        u["videos"] = max(0, int(u.get("videos", 0)) + n)
-        all_[who] = u
-        # 어제 것들은 버린다 (파일이 계속 커지지 않게)
-        all_ = {k: v for k, v in all_.items() if v.get("date") == _today()}
-        tmp = USAGE_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(all_, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(USAGE_FILE)
+        rel = _usage_key(who)
+        p = RUNS / rel
+        cur = usage_of(who)["videos"]
+        u = {"date": _today(), "videos": max(0, cur + n), "who": str(who)[:40]}
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(u, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(p)
+        store.put(p, rel)
         return u
+
+
+def usage_sweep():
+    """어제까지의 사용량 기록을 지운다. 매일 한 번이면 충분하다."""
+    root = RUNS / "usage"
+    if not root.is_dir():
+        return
+    for d in list(root.iterdir()):
+        if d.is_dir() and d.name != _today():
+            shutil.rmtree(d, ignore_errors=True)
+            store.drop("usage/%s/" % d.name)
 
 
 def quota_left():
@@ -223,9 +242,15 @@ def quota():
 
 
 def job_dir(jid):
-    """작업 폴더. 남의 작업은 없는 것처럼 취급한다."""
+    """작업 폴더. 남의 작업은 없는 것처럼 취급한다.
+
+    저장소를 쓰는 중이면 이 서버에 파일이 없을 수 있다 (다른 서버가 만들었거나
+    이 서버가 방금 떴거나). 그럴 때는 작업 기록부터 끌어와서 채운다.
+    """
     d = RUNS / jid
     f = d / "job.json"
+    if not f.exists():
+        store.get("%s/job.json" % jid, f)
     if not d.exists() or not f.exists():
         raise HTTPException(404, "작업을 찾을 수 없습니다.")
     try:
@@ -278,29 +303,115 @@ def write_job(jid, job):
         tmp = p.with_suffix(".tmp")
         tmp.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(p)
+        store.put(p, "%s/job.json" % jid)
+    # 작업 기록이 바뀌었다는 건 보통 파일이 하나 늘었다는 뜻이다 (올린 그림,
+    # 만든 장면 …). 이때 같이 올려둔다. 안 그러면 서버가 죽었을 때 사라진다.
+    if store.enabled():
+        try:
+            sync_up(jid, p.parent)
+        except Exception as e:
+            print("저장소 동기화 실패:", str(e)[:80])
 
 
 # ---- 긴 작업 -----------------------------------------------------------------
 # 키컷 생성은 20초, 영상 생성은 6분씩 걸린다. HTTP 요청 하나로 붙잡고 있으면
 # 연결이 끊기는 순간 실패하므로 스레드로 돌리고 진행률만 폴링한다.
-TASKS = {}
+# 진행 상황은 작업 폴더의 task.json 에 적는다.
+# 메모리에만 두면 서버가 다시 뜰 때 "어디까지 갔는지"가 통째로 사라지고,
+# 서버를 두 대로 늘리면 한쪽이 만든 진행 상황을 다른 쪽이 모른다.
 LOCK = threading.Lock()
+_TASK_CACHE = {}          # jid -> (파일 수정시각, 내용) — 매번 읽지 않으려고
+STALE_MIN = 25            # 이 시간이 지나도 안 끝난 '진행 중'은 죽은 것으로 본다
+
+
+def _task_path(jid):
+    return RUNS / jid / "task.json"
+
+
+def task_get(jid):
+    p = _task_path(jid)
+    if not p.exists():
+        store.get("%s/task.json" % jid, p)
+    try:
+        mt = p.stat().st_mtime
+    except OSError:
+        return {"state": "idle"}
+    hit = _TASK_CACHE.get(jid)
+    if hit and hit[0] == mt:
+        return dict(hit[1])
+    try:
+        t = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {"state": "idle"}
+    _TASK_CACHE[jid] = (mt, t)
+    return dict(t)
 
 
 def task_set(jid, **kw):
     with LOCK:
-        t = TASKS.setdefault(jid, {})
+        t = task_get(jid)
+        if t.get("state") == "idle":
+            t = {}
         t.update(kw)
+        p = _task_path(jid)
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            tmp = p.with_suffix(".tmp")
+            tmp.write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(p)
+            _TASK_CACHE[jid] = (p.stat().st_mtime, t)
+            store.put(p, "%s/task.json" % jid)
+        except OSError:
+            pass                      # 폴더가 지워졌으면 그냥 넘어간다
         return dict(t)
 
 
-def task_get(jid):
-    with LOCK:
-        return dict(TASKS.get(jid) or {"state": "idle"})
+def task_busy(jid):
+    """지금 뭔가 돌고 있는가. 죽은 채 남은 기록은 아니라고 본다."""
+    t = task_get(jid)
+    if t.get("state") not in ("running", "waiting"):
+        return False
+    started = float(t.get("started") or 0)
+    return (time.time() - started) < STALE_MIN * 60
+
+
+def sync_up(jid, d):
+    """작업 폴더에서 새로 생기거나 바뀐 파일을 저장소에 올린다.
+
+    파일을 만드는 자리마다 올리는 코드를 넣으면 빠뜨리기 쉽다. 일이 끝날 때
+    폴더를 한 번 훑어서 달라진 것만 올린다. (local 모드에서는 아무 일도 안 한다)
+    """
+    if not store.enabled():
+        return 0
+    mark = d / ".synced.json"
+    try:
+        seen = json.loads(mark.read_text(encoding="utf-8"))
+    except Exception:
+        seen = {}
+    n = 0
+    for f in sorted(d.rglob("*")):
+        if not f.is_file() or f.name in (".synced.json", "task.json", "job.json"):
+            continue
+        rel = str(f.relative_to(d)).replace("\\", "/")
+        st = f.stat()
+        tag = "%d:%d" % (st.st_mtime_ns, st.st_size)
+        if seen.get(rel) == tag:
+            continue
+        try:
+            store.put(f, "%s/%s" % (jid, rel))
+            seen[rel] = tag
+            n += 1
+        except Exception as e:
+            print("저장소 올리기 실패:", rel, str(e)[:80])
+    try:
+        mark.write_text(json.dumps(seen, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+    return n
 
 
 def run_task(jid, label, fn):
-    if task_get(jid).get("state") == "running":
+    if task_busy(jid):
         raise HTTPException(409, "이미 다른 작업이 진행 중입니다.")
 
     owner = sid()      # 요청을 보낸 사람
@@ -311,7 +422,11 @@ def run_task(jid, label, fn):
         _SID.set(owner)
         try:
             fn()
-            task_set(jid, state="done", msg=None, at=time.time())
+            # fal 에 맡기기만 한 일은 아직 안 끝났다 (state="waiting").
+            # 그런 경우까지 완료로 찍지 않는다.
+            sync_up(jid, RUNS / jid)
+            if task_get(jid).get("state") == "running":
+                task_set(jid, state="done", msg=None, at=time.time())
         except Exception as e:
             traceback.print_exc()
             task_set(jid, state="error", msg=friendly(e), at=time.time())
@@ -369,6 +484,8 @@ def blank_job():
         "poster_mode": "bake", "ending_baked": None,
         "cuts": [], "ending_raw": None, "ending": None, "result": None,
         "spent": 0.0, "render_n": 0,
+        # fal 에 맡겨둔 일. {"stage","reqs":[{"id","out","done"}],"engine","want_ending"}
+        "pending": None,
     }
 
 
@@ -437,7 +554,8 @@ def delete_job(jid: str):
     """
     d = job_dir(jid)
     shutil.rmtree(d, ignore_errors=True)
-    TASKS.pop(jid, None)
+    store.drop(jid + "/")
+    _TASK_CACHE.pop(jid, None)      # 폴더째 지워지므로 task.json 도 같이 사라진다
     return {"ok": True, "id": jid}
 
 
@@ -468,9 +586,41 @@ def get_job(jid: str):
     return job
 
 
+CHECK_SEC = 5          # fal 에 물어보는 간격
+_LAST_CHECK = {}
+
+
 @app.get("/api/{jid}/task")
 def get_task(jid: str):
-    return task_get(jid)
+    """진행 상황. 맡겨둔 일이 있으면 이 참에 fal 에도 확인한다.
+
+    따로 도는 일꾼을 두지 않아도 되고, 서버가 재시작돼도 작업 파일에 적힌
+    접수 번호로 이어서 받는다.
+    """
+    t = task_get(jid)
+    try:
+        j = read_job(jid)
+    except HTTPException:
+        return t
+    p = j.get("pending")
+    # 진행 상황 기록이 없는데 맡긴 일만 남아 있는 경우 (아주 옛 작업 등). 작업 파일에 맡긴 일이
+    # 남아 있으면 '아직 하는 중'으로 되살려 준다 (화면이 끊긴 줄 알지 않도록).
+    if p and t.get("state") in (None, "idle"):
+        t = task_set(jid, state="waiting", label="영상 만들기",
+                     msg="하던 작업을 이어받는 중", started=time.time(),
+                     done=sum(1 for r in (p.get("reqs") or []) if r.get("done")),
+                     total=len(p.get("reqs") or []))
+    if p and p.get("stage") == "cuts":
+        last = _LAST_CHECK.get(jid, 0)
+        if time.time() - last >= CHECK_SEC:
+            _LAST_CHECK[jid] = time.time()
+            try:
+                _collect_cuts(jid, RUNS / jid)
+            except Exception as e:
+                traceback.print_exc()
+                _fail(jid, RUNS / jid, friendly(e))
+        t = task_get(jid)
+    return t
 
 
 @app.delete("/api/{jid}")
@@ -481,7 +631,16 @@ def del_job(jid: str):
 
 @app.get("/api/{jid}/file/{name}")
 def get_file(jid: str, name: str):
-    p = job_dir(jid) / name
+    d = job_dir(jid)
+    p = d / name
+    # 저장소를 쓰는 중이면 임시 주소로 보내 저장소에서 바로 받게 한다.
+    # 큰 영상을 서버가 통째로 받아서 다시 내보내면 그만큼 느리고 비싸다.
+    if store.enabled():
+        u = store.link("%s/%s" % (jid, name), filename=name)
+        if u:
+            return RedirectResponse(u, status_code=302)
+    if not p.exists():
+        store.get("%s/%s" % (jid, name), p)      # 다른 서버가 만든 파일일 수 있다
     if not p.exists():
         raise HTTPException(404, "파일이 없습니다.")
     # 같은 이름으로 덮어쓰는 파일이 많다(character.png, plate.mp4 …).
@@ -494,8 +653,15 @@ def download(jid: str):
     job = read_job(jid)
     if not job.get("result"):
         raise HTTPException(400, "아직 완성된 영상이 없습니다.")
-    return FileResponse(job_dir(jid) / job["result"], media_type="video/mp4",
-                        filename="%s.mp4" % (job.get("title") or "video"))
+    name = "%s.mp4" % (job.get("title") or "video")
+    rel = "%s/%s" % (jid, job["result"])
+    if store.enabled():                      # 저장소에서 바로 받게 한다
+        u = store.link(rel, filename=name, inline=False)
+        if u:
+            return RedirectResponse(u, status_code=302)
+    p = job_dir(jid) / job["result"]
+    store.get(rel, p)
+    return FileResponse(p, media_type="video/mp4", filename=name)
 
 
 # ---- 1. 캐릭터 ---------------------------------------------------------------
@@ -1182,7 +1348,7 @@ def render(jid: str, with_ending: str = Form("true"), confirm_low: str = Form("f
 
     def work():
         try:
-            _render(jid, d, want_ending)
+            _submit_cuts(jid, d, want_ending)
         except Exception:
             # 실패한 것은 쓴 것으로 치지 않는다. 하루 편수도, 이 영상의
             # 다시 만들기 횟수도 되돌린다 (안 그러면 실패만으로 막힌다).
@@ -1200,51 +1366,129 @@ def render(jid: str, with_ending: str = Form("true"), confirm_low: str = Form("f
     return run_task(jid, "영상 만들기", work)
 
 
-def _render(jid, d, want_ending):
-    if True:
-        j = read_job(jid)
-        j["render_n"] = int(j.get("render_n", 0)) + 1
-        write_job(jid, j)
-        key = d / j["keycut"]
+def _submit_cuts(jid, d, want_ending):
+    """춤 영상 생성을 fal 에 맡기기만 한다. 결과는 나중에 받는다."""
+    j = read_job(jid)
+    j["render_n"] = int(j.get("render_n", 0)) + 1
+    key = str(d / j["keycut"])
+    plate = d / j["plate"]
 
-        secs = pl._dur(d / j["plate"])
-        # 카메라 무빙은 생성 후에 입힌다. Kling 에 직접 카메라를 지시하는 길도 있지만
-        # 얼마나 따르는지 확인된 적이 없고, 마음에 안 들면 다시 뽑아야 해서 뺐다.
-        cam_prompt = None
-        if j.get("one_shot", True):
-            task_set(jid, msg="춤 영상 생성 중 — 끊김 없이 한 번에 (8~12분)", done=0, total=1)
-            out = d / "cuts" / "full.mp4"
+    if j.get("one_shot", True):
+        task_set(jid, msg="춤 영상 생성을 맡기는 중", done=0, total=1)
+        (d / "cuts").mkdir(parents=True, exist_ok=True)
+        rid = vd.submit(key, str(plate), orientation="video")
+        reqs = [{"id": rid, "out": "cuts/full.mp4", "done": False}]
+        secs = pl._dur(plate)
+    else:
+        task_set(jid, msg="레퍼런스를 %d초씩 나누는 중" % pl.CUT_SEC)
+        segs = pl.split_plate(plate, d / "segs")
+        (d / "cuts").mkdir(parents=True, exist_ok=True)
+        task_set(jid, msg="춤 영상 생성을 맡기는 중", done=0, total=len(segs))
+        reqs = []
+        for n, seg in enumerate(segs, 1):
+            reqs.append({"id": vd.submit(key, str(seg), orientation="video"),
+                         "out": "cuts/cut%d.mp4" % n, "done": False})
+        secs = len(segs) * pl.CUT_SEC
+
+    j["pending"] = {"stage": "cuts", "reqs": reqs, "engine": vd.DEFAULT_ENGINE,
+                    "want_ending": bool(want_ending), "secs": secs}
+    j["spent"] = round(j.get("spent", 0) + secs * vd.PRICE_PER_SEC, 3)
+    write_job(jid, j)
+    task_set(jid, state="waiting", label="영상 만들기", done=0, total=len(reqs),
+             msg="춤 영상 만드는 중 (8~12분) — 창을 닫아도 계속됩니다",
+             started=time.time())
+
+
+def _collect_cuts(jid, d):
+    """맡긴 일이 다 됐는지 확인하고, 다 됐으면 받아온다.
+
+    화면이 진행 상황을 물어볼 때 불린다. fal 에 너무 자주 묻지 않도록
+    CHECK_SEC 초에 한 번만 확인한다.
+    """
+    j = read_job(jid)
+    p = j.get("pending")
+    if not p or p.get("stage") != "cuts":
+        return
+    eng = p.get("engine") or vd.DEFAULT_ENGINE
+    plate = d / j["plate"] if j.get("plate") else None
+    changed = False
+    for r in p["reqs"]:
+        if r.get("done"):
+            continue
+        st = vd.poll(r["id"], engine=eng)
+        if st == "failed":
+            _fail(jid, d, "생성 모델이 이 영상을 만들지 못했습니다. 다시 시도해 주세요.")
+            return
+        if st == "done":
+            out = d / r["out"]
             out.parent.mkdir(parents=True, exist_ok=True)
-            pl.kling_single(str(key), d / j["plate"], out, prompt=cam_prompt,
-                            progress=lambda i, n: task_set(jid, done=i, total=n))
-            j["cuts"] = ["cuts/full.mp4"]
-        else:
-            task_set(jid, msg="레퍼런스를 %d초씩 나누는 중" % pl.CUT_SEC)
-            segs = pl.split_plate(d / j["plate"], d / "segs")
-            task_set(jid, msg="춤 영상 생성 중 (한 컷에 5~7분, 동시 진행)", done=0, total=len(segs))
-            cuts = pl.kling_cuts(str(key), segs, d / "cuts", prompt=cam_prompt,
-                                 progress=lambda i, n: task_set(jid, done=i, total=n))
-            j["cuts"] = [str(Path(c).relative_to(d)).replace("\\", "/") for c in cuts]
-            secs = len(segs) * pl.CUT_SEC
-        j["spent"] = round(j.get("spent", 0) + secs * vd.PRICE_PER_SEC, 3)
+            vd.fetch(r["id"], str(out), engine=eng, fallback=plate)
+            r["done"] = True
+            changed = True
+    if changed:
+        j["pending"] = p
         write_job(jid, j)
+    done_n = sum(1 for r in p["reqs"] if r.get("done"))
+    task_set(jid, done=done_n, total=len(p["reqs"]))
+    if done_n < len(p["reqs"]):
+        return
+
+    # 다 받았다. 여기서부터는 짧은 일이라 스레드로 마무리한다.
+    j["cuts"] = [r["out"] for r in p["reqs"]]
+    j["pending"] = {"stage": "finishing", "want_ending": p.get("want_ending", True)}
+    write_job(jid, j)
+    threading.Thread(target=_finish_up, args=(jid, d, j.get("owner") or ""),
+                     daemon=True).start()
+
+
+def _finish_up(jid, d, owner):
+    """엔딩을 붙이고 합치고 자막을 굽는다. 몇 십 초 걸린다.
+
+    주인을 인자로 받는다 — 작업을 읽으려면 세션이 먼저 있어야 하는데,
+    새 스레드에는 쿠키가 없어서 읽고 나서 세우면 이미 늦는다.
+    """
+    _SID.set(owner)
+    try:
+        j = read_job(jid)
+        want_ending = (j.get("pending") or {}).get("want_ending", True)
+        task_set(jid, state="running", msg="영상 합치는 중", done=0, total=0)
 
         ending = None
         if want_ending:
             if j.get("ending") and (d / j["ending"]).exists():
-                ending = j["ending"]          # 이미 만들어 확인한 엔딩은 다시 뽑지 않는다
+                ending = j["ending"]      # 이미 확인한 엔딩은 다시 뽑지 않는다
             else:
-                task_set(jid, msg="엔딩 장면 그리는 중", done=0, total=0)
+                task_set(jid, msg="엔딩 장면 그리는 중")
                 ending = build_ending(j, d, jid)
             write_job(jid, j)
 
-        task_set(jid, msg="영상 합치는 중", done=0, total=0)
         pl.finish([d / c for c in j["cuts"]], (d / ending) if ending else None,
                   audio_for(j, d), d / "final_raw.mp4")
         if j.get("subs_on") and j.get("subs"):
             task_set(jid, msg="자막 굽는 중")
         apply_subs(j, d)
+        j["pending"] = None
         write_job(jid, j)
+        sync_up(jid, d)
+        task_set(jid, state="done", msg=None, at=time.time())
+    except Exception as e:
+        traceback.print_exc()
+        _fail(jid, d, friendly(e))
+
+
+def _fail(jid, d, msg):
+    """실패 처리. 쓴 것으로 치지 않고 되돌린다."""
+    try:
+        j = read_job(jid)
+        j["pending"] = None
+        j["render_n"] = max(0, int(j.get("render_n", 1)) - 1)
+        write_job(jid, j)
+        who = j.get("owner") or ""
+        if who:
+            usage_bump(who, -1)
+    except Exception:
+        pass
+    task_set(jid, state="error", msg=msg, at=time.time())
 
 
 class NoCacheStatic(StaticFiles):

@@ -569,7 +569,8 @@ async function runTask(start, msgEl, label){
   for(;;){
     await new Promise(r => setTimeout(r, 1500));
     let t; try { t = await api(`/api/${JOB.id}/task`); } catch(e){ continue; }
-    if (t.state === 'running'){
+    // waiting = fal 에 맡겨두고 기다리는 중. running 과 똑같이 취급한다.
+    if (t.state === 'running' || t.state === 'waiting'){
       const el = t.started ? Math.round(Date.now()/1000 - t.started) : 0;
       const pg = t.total > 0 ? `  ${t.done}/${t.total}` : '';
       say(msgEl, `${label} — ${t.msg || '진행 중'}${pg}   (${el}초 경과)`);
