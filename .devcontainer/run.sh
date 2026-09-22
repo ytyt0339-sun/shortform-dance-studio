@@ -15,7 +15,9 @@ fi
 
 pkill -f "v2/app/studio.py" 2>/dev/null
 sleep 1
-nohup python v2/app/studio.py > /tmp/app.log 2>&1 &
+# setsid 로 쉘에서 떼어낸다. 그냥 nohup 만 쓰면 Codespace 가 켜질 때 도는
+# 자동 실행 쉘이 끝나면서 같이 죽는다 (실제로 그래서 앱이 안 떠 있었다).
+setsid nohup python v2/app/studio.py > /tmp/app.log 2>&1 < /dev/null &
 echo "띄우는 중 (pid $!)"
 
 # curl 이 없는 이미지라 파이썬으로 확인한다

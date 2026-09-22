@@ -29,7 +29,8 @@
 
   "forwardPorts": [8020],
   "portsAttributes": {
-    "8020": { "label": "웹앱", "onAutoForward": "notify" }
+    // 다시 켤 때마다 비공개로 돌아가지 않도록 여기서 못박는다
+    "8020": { "label": "웹앱", "visibility": "public", "onAutoForward": "silent" }
   },
 
   "customizations": {
