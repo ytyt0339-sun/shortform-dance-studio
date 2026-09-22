@@ -191,6 +191,11 @@ def usage_of(who):
     """오늘 이 사람이 만든 편수. 날짜가 바뀌면 0 부터 다시 센다."""
     rel = _usage_key(who)
     p = RUNS / rel
+    # 서버가 여러 대면 내 디스크의 사본은 헌 것일 수 있다. 저장소를 쓰는 중이면
+    # 지금 값을 직접 본다. 안 그러면 한도가 서버 수만큼 늘어난다.
+    u = store.read_json(rel)
+    if u is not None:
+        return {"date": _today(), "videos": int(u.get("videos", 0))}
     if not p.exists():
         store.get(rel, p)              # 다른 서버가 센 것이 있을 수 있다
     try:

@@ -27,10 +27,19 @@ def _s3():
     global _S3
     if _S3 is None:
         import boto3
+        from botocore.config import Config
+        # 요즘 boto3 는 올릴 때 체크섬을 끼워 보내는데, 구글 저장소(GCS)의
+        # S3 호환 창구는 그걸 모르는 값이라며 400 을 낸다. 꼭 필요할 때만 쓰게 한다.
+        try:
+            cfg = Config(request_checksum_calculation="when_required",
+                         response_checksum_validation="when_required")
+        except TypeError:
+            cfg = Config()            # 오래된 botocore 는 이 설정이 없다
         _S3 = boto3.client(
             "s3",
-            endpoint_url=os.environ.get("S3_ENDPOINT") or None,   # R2 는 여기를 채운다
+            endpoint_url=os.environ.get("S3_ENDPOINT") or None,   # R2·GCS 는 여기를 채운다
             region_name=os.environ.get("S3_REGION") or None,
+            config=cfg,
         )
     return _S3
 
@@ -65,6 +74,22 @@ def get(rel, local_path):
         return True
     except Exception:
         return False
+
+
+def read_json(rel, default=None):
+    """저장소에 있는 작은 기록을 곧바로 읽는다.
+
+    서버가 여러 대일 때 하루 한도 같은 숫자는 내 디스크에 남은 헌 사본이 아니라
+    저장소의 지금 값을 봐야 한다. (local 모드면 None 을 돌려준다)
+    """
+    if not enabled():
+        return default
+    import json as _json
+    try:
+        r = _s3().get_object(Bucket=BUCKET, Key=_key(rel))
+        return _json.loads(r["Body"].read().decode("utf-8"))
+    except Exception:
+        return default
 
 
 def exists(rel, local_path=None):
