@@ -32,6 +32,17 @@ SAY_EVERY = 2.0          # 진행 상황을 저장소에 적는 간격(초). 너
 INFO_OPS = {"font_list"}
 
 
+def _write_task(jid, task):
+    """진행 상황을 작업 폴더와 저장소에 적는다. 화면은 이 파일만 본다."""
+    try:
+        p = WORK / jid / "task.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(task, ensure_ascii=False), encoding="utf-8")
+        store.put(p, "%s/task.json" % jid)
+    except Exception:
+        pass          # 진행 표시를 못 적는다고 일을 멈출 이유는 없다
+
+
 def _progress_writer(jid, box):
     """진행 상황을 작업 폴더의 task.json 으로 흘려보낸다.
 
@@ -51,14 +62,22 @@ def _progress_writer(jid, box):
         if time.time() - last[0] < SAY_EVERY:
             return
         last[0] = time.time()
-        try:
-            p = WORK / jid / "task.json"
-            p.write_text(json.dumps(dict(box, state="running"), ensure_ascii=False),
-                         encoding="utf-8")
-            store.put(p, "%s/task.json" % jid)
-        except Exception:
-            pass          # 진행 표시를 못 적는다고 일을 멈출 이유는 없다
+        _write_task(jid, dict(box, state="running"))
     return say
+
+
+def friendly(e):
+    """사람이 읽을 수 있는 실패 문구. 화면에 그대로 뜬다."""
+    s = str(e)
+    if isinstance(e, FileNotFoundError):
+        return "필요한 파일이 없습니다. 다시 올려 주세요."
+    if "No complete upper body" in s or "upper body" in s:
+        return "춤 영상에서 사람의 상반신이 또렷하게 안 보입니다. 다른 구간을 골라 주세요."
+    if "422" in s:
+        return "레퍼런스에 사람이 한 명만 나와야 합니다."
+    if "timed out" in s.lower() or "timeout" in s.lower():
+        return "시간이 너무 오래 걸려 멈췄습니다. 다시 시도해 주세요."
+    return "%s: %s" % (type(e).__name__, s[:200])
 
 
 def handler(event, context):
@@ -89,6 +108,12 @@ def handler(event, context):
         else:
             j = event.get("job") or {}
 
+        # 재료가 없는데 시작하면 한참 뒤에 엉뚱한 자리에서 터진다.
+        # 여기서 먼저 확인하고 알아들을 수 있는 말로 알려준다.
+        want = params.get("name") or j.get(event.get("needs") or "")
+        if want and not (d / want).exists():
+            raise FileNotFoundError(want)
+
         # 2. 일하기 — 서버와 같은 함수
         before = store.snapshot(d)
         box = {"label": event.get("label") or op}
@@ -97,9 +122,15 @@ def handler(event, context):
         # 3. 결과 돌려주기
         f.write_text(json.dumps(j, ensure_ascii=False, indent=2), encoding="utf-8")
         sent = store.sync_up(d, jid, before)
+        store.put(f, "%s/job.json" % jid)
+        # 맡겨놓고 돌아가는 방식에서는 부르는 쪽이 결과를 못 본다.
+        # 그래서 끝났다는 표시도 여기서 직접 적는다 (화면이 이 파일을 본다).
+        _write_task(jid, {"state": "done", "at": time.time(),
+                          "label": event.get("label") or op})
         return {"ok": True, "job": j, "files": sent, "got": got,
                 "seconds": round(time.time() - t0, 1)}
     except Exception as e:
         traceback.print_exc()
-        return {"ok": False, "error": "%s: %s" % (type(e).__name__, e),
-                "seconds": round(time.time() - t0, 1)}
+        msg = friendly(e)
+        _write_task(jid, {"state": "error", "msg": msg, "at": time.time()})
+        return {"ok": False, "error": msg, "seconds": round(time.time() - t0, 1)}

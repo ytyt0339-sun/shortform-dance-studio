@@ -30,7 +30,16 @@ aws ecr describe-repositories --repository-names "$NAME" >/dev/null 2>&1 \
 
 echo "== 이미지 만들고 올리기 (2.5GB, 처음에는 10분쯤)"
 aws ecr get-login-password | docker login --username AWS --password-stdin "${REPO%/*}"
-docker build -f v2/lambda/Dockerfile -t "$NAME" v2
+# OneDrive 폴더에서 바로 구우면 도커가 파일을 못 읽는 일이 있다.
+# 임시 폴더로 복사해 굽는다 (한글·동기화 폴더 문제를 피한다).
+CTX=$(mktemp -d)
+mkdir -p "$CTX/app" "$CTX/lambda"
+cp v2/app/*.py "$CTX/app/"
+cp -r v2/app/static_studio "$CTX/app/" 2>/dev/null || true
+cp v2/lambda/* "$CTX/lambda/"
+cp v2/requirements.txt v2/.dockerignore "$CTX/"
+docker build -f "$CTX/lambda/Dockerfile" -t "$NAME" "$CTX"
+rm -rf "$CTX"
 docker tag "$NAME:latest" "$REPO:latest"
 docker push "$REPO:latest"
 
