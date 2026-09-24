@@ -17,7 +17,8 @@ bucket_name = "dance-runs"
 # 하루 편수 같은 작은 숫자. R2 보다 읽기가 빠르고 싸다.
 [[kv_namespaces]]
 binding = "COUNTS"
-id = "채워야_함"          # 계정 만든 뒤 wrangler kv namespace create COUNTS 로 받는다
+id = "0123456789abcdef0123456789abcdef"   # 계정 만든 뒤 진짜 값으로 바꾼다
+                                        # (내 컴퓨터에서 시험할 때는 아무 값이나 된다)
 
 [triggers]
 crons = ["* * * * *"]     # 1분마다: fal 에 맡긴 영상이 다 됐는지 확인
@@ -27,4 +28,7 @@ DAILY_VIDEOS = "2"
 DAILY_VIDEOS_IP = "4"
 REDO_LIMIT = "1"
 KEEP_HOURS = "336"
+# 임시 파일 주소에 서명할 때 쓰는 값. 올릴 때는 wrangler secret 으로 진짜 값을 넣는다.
+LINK_SECRET = "시험용-아무거나"
+BUILT_AT = "0"
 # 비밀값(FAL_KEY, AWS 열쇠)은 여기 두지 않는다. wrangler secret put 으로 넣는다.

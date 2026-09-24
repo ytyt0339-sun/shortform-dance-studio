@@ -3,11 +3,13 @@
 // 지금 서버(파이썬)와 **같은 규칙**을 쓴다. 모르는 값이 오면 조용히 무시한다
 // (화면이 옛 버전이어도 깨지지 않게).
 
-export const CAMERAS = ["none", "push", "sway", "sway_strong", "normal"];
-export const SUB_STYLES = ["soft", "bold", "box", "outline"];
+// 서버(파이썬)가 실제로 아는 값들. 여기 없는 값이 오면 조용히 무시한다.
+// 값을 늘릴 때는 파이썬 쪽(pipeline.py)과 **양쪽 다** 고쳐야 한다.
+export const CAMERAS = ["none", "push", "sway", "sway_strong", "orbit", "punch", "handheld"];
+export const SUB_STYLES = ["soft", "bold", "serif"];
 export const STYLE_MODES = ["3d", "doodle"];
-export const POSTER_KINDS = ["wall", "banner", "board", "screen"];
-export const ENDING_POSES = ["point", "hold", "stand"];
+export const POSTER_KINDS = ["wall", "board", "banner", "frame"];
+export const ENDING_POSES = ["point", "wave", "open", "look"];
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const num = (v) => (v === null || v === "" || isNaN(Number(v)) ? null : Number(v));
