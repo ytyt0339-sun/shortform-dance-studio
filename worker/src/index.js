@@ -7,7 +7,10 @@
 //   · "이 일 해줘" 를 람다에 넘기고, 진행 상황은 R2 의 task.json 으로 주고받기
 //
 // 무거운 계산이 없으므로 무료 플랜의 짧은 계산 시간 안에 들어간다.
+import * as fal from "./fal.js";
 import { invoke } from "./lambda.js";
+import { linkOk, tempLink } from "./sign.js";
+import { setEndingOptions, setOptions, setSubs, STYLE_MODES } from "./settings.js";
 import {
   blankJob, dropJob, indexAdd, indexDrop, key, listJobs,
   ownedJob, readJob, readTask, writeJob, writeTask,
@@ -115,6 +118,19 @@ async function route(request, env, ctx, who, ip) {
 
   if (path === "/api/jobs") return json({ jobs: await listJobs(env, who) });
 
+  // 화면이 "내가 최신인가" 물어보는 자리. 올릴 때마다 값이 바뀐다.
+  if (path === "/api/version") return json({ page_mtime: Number(env.BUILT_AT || 0) });
+
+  // 고를 수 있는 글꼴과 선택지. 잘 안 바뀌므로 하루 동안 기억해 둔다.
+  if (path === "/api/fonts") {
+    const got = await env.COUNTS.get("lists", "json");
+    if (got) return json(got);
+    const out = await invoke(env, { op: "font_list", jid: "_lists" }, true);
+    const lists = out.result || out.job || {};
+    await env.COUNTS.put("lists", JSON.stringify(lists), { expirationTtl: 86400 });
+    return json(lists);
+  }
+
   if (seg[0] !== "api" || seg.length < 2) return oops("없는 주소입니다.", 404);
   const jid = seg[1];
   const job = await ownedJob(env, jid, who);
@@ -190,9 +206,199 @@ async function route(request, env, ctx, who, ip) {
     if (rest === "ending") {
       return runOp(env, jid, "엔딩 만들기", "build_ending");
     }
+    if (rest === "render") {
+      return startRender(env, url, jid, job, who, ip, s("with_ending", "true") === "true");
+    }
+
+    // ── 설정만 고치는 것들 (생성 아님, 빠르고 공짜) ──
+    if (rest === "style") {
+      if (!STYLE_MODES.includes(s("style_mode"))) return oops("없는 화풍입니다.");
+      job.style_mode = s("style_mode");
+      return json(await writeJob(env, jid, job));
+    }
+    if (rest === "keycut/approve") {
+      if (!job.keycut) return oops("키컷이 아직 없습니다.");
+      job.keycut_approved = s("approved", "true") === "true";
+      return json(await writeJob(env, jid, job));
+    }
+    if (rest === "options") return json(await writeJob(env, jid, setOptions(job, form)));
+    if (rest === "ending/options") {
+      return json(await writeJob(env, jid, setEndingOptions(job, form)));
+    }
+    if (rest === "poster") {
+      job.poster = [s("l1"), s("l2"), s("l3")].map((x) => x.trim());
+      await writeJob(env, jid, job);
+      // 이미 만들어둔 엔딩이 있으면 글자만 다시 얹는다 (무료)
+      if (job.ending_raw || job.ending_still) {
+        return runOp(env, jid, "포스터 문구 반영", "apply_poster_text");
+      }
+      return json(job);
+    }
+    if (rest === "subtitles/save") {
+      const out = setSubs(job, form);
+      if (out.error) return oops(out.error);
+      await writeJob(env, jid, out.job);
+      // 이미 만든 영상이 있으면 자막만 다시 굽는다 (무료)
+      if (out.job.result) return runOp(env, jid, "자막 반영", "apply_subs");
+      return json(out.job);
+    }
+    if (rest === "subtitles/restyle") {
+      if (!job.result) return oops("먼저 영상을 만들어주세요.");
+      return runOp(env, jid, "모양 반영", "apply_subs");
+    }
+    if (rest === "ending/still") return runOp(env, jid, "엔딩 장면 만들기", "make_still");
+    if (rest === "ending/video") return runOp(env, jid, "엔딩 영상 만들기", "build_ending");
+  }
+
+  // 얼마나 드는지 미리 보여주기 (화면의 '만들기' 옆 안내)
+  if (rest === "estimate") {
+    const CUT_SEC = 6, NB = 0.08, POSTER_VID = 0.54;
+    const n = job.segments || 0;
+    const secs = job.one_shot === false ? n * CUT_SEC : (job.clip_dur || n * CUT_SEC);
+    const dance = Math.round(secs * fal.PRICE_PER_SEC * 100) / 100;
+    const ending = Math.round((NB + POSTER_VID) * 100) / 100;
+    return json({ segments: n, seconds: Math.round(secs), one_shot: job.one_shot !== false,
+                  dance, ending, total: Math.round((dance + ending) * 100) / 100 });
+  }
+
+  // 포스터 미리보기 — 설정이 같으면 만들어둔 것을 그대로 준다 (빠르고 공짜)
+  if (rest === "poster_preview") {
+    const tag = await stamp(env, job);
+    const name = `poster_art_${tag}.png`;
+    let obj = await env.FILES.get(key(jid, name));
+    if (!obj) {
+      await invoke(env, { op: "poster_preview", jid, params: {} }, true);
+      const made = await env.FILES.get(key(jid, "poster_art.png"));
+      if (!made) return oops("미리보기를 만들지 못했습니다.", 500);
+      const body = await made.arrayBuffer();
+      await env.FILES.put(key(jid, name), body,
+                          { httpMetadata: { contentType: "image/png" } });
+      return new Response(body, { headers: { "content-type": "image/png",
+                                             "cache-control": "no-store" } });
+    }
+    return new Response(obj.body, { headers: { "content-type": "image/png",
+                                               "cache-control": "no-store" } });
+  }
+
+  // 완성본 내려받기 — 파일 이름을 작업 제목으로 준다
+  if (rest === "download") {
+    if (!job.result) return oops("아직 완성된 영상이 없습니다.");
+    const obj = await env.FILES.get(key(jid, job.result));
+    if (!obj) return oops("파일이 없습니다.", 404);
+    const name = encodeURIComponent(`${job.title || "video"}.mp4`);
+    return new Response(obj.body, {
+      headers: {
+        "content-type": "video/mp4",
+        "content-disposition": `attachment; filename*=UTF-8''${name}`,
+      },
+    });
   }
 
   return oops("없는 주소입니다.", 404);
+}
+
+// ── 영상 만들기 ──────────────────────────────────────────────────────────
+// fal 에 맡기기만 하고 바로 돌아온다. 다 됐는지는 1분마다 도는 확인이 본다.
+// 8~12분 걸리는 일을 붙잡고 기다리지 않으므로, 사람이 몰려도 밀리지 않는다.
+async function startRender(env, url, jid, job, who, ip, wantEnding) {
+  if (!job.keycut_approved) return oops("키컷을 먼저 확인하고 승인해주세요.");
+  if (!job.plate) return oops("레퍼런스 춤 영상을 먼저 올려주세요.");
+  if ((job.render_n || 0) > parseInt(env.REDO_LIMIT || "1", 10)) {
+    return oops("이 영상은 다시 만들기 횟수를 다 썼습니다. 자막·글꼴·카메라는 " +
+                "다시 만들지 않아도 바꿀 수 있습니다.", 429);
+  }
+  if ((await quotaLeft(env, who, ip)) <= 0) {
+    return oops("오늘 만들 수 있는 편수를 다 쓰셨습니다. 내일 다시 이용해 주세요.", 429);
+  }
+
+  await usageBump(env, who, 1);
+  if (ip) await usageBump(env, `ip:${ip}`, 1);
+  const base = url.origin;
+  try {
+    const [img, vid] = await Promise.all([
+      tempLink(env, base, jid, job.keycut, 6 * 3600),
+      tempLink(env, base, jid, job.plate, 6 * 3600),
+    ]);
+    const rid = await fal.submit(env, img, vid);
+    job.render_n = (job.render_n || 0) + 1;
+    job.pending = {
+      stage: "cuts", want_ending: wantEnding,
+      reqs: [{ id: rid, out: "cuts/full.mp4", done: false }],
+    };
+    await writeJob(env, jid, job);
+    await env.COUNTS.put(`pend:${jid}`, String(Date.now()), { expirationTtl: 60 * 60 * 6 });
+    await writeTask(env, jid, {
+      state: "waiting", label: "영상 만들기", done: 0, total: 1,
+      msg: "춤 영상 만드는 중 (8~12분) — 창을 닫아도 계속됩니다",
+      started: Date.now() / 1000,
+    });
+    return json(await readTask(env, jid));
+  } catch (e) {
+    // 실패한 것은 쓴 것으로 치지 않는다 (안 그러면 실패만으로 막힌다)
+    await usageBump(env, who, -1);
+    if (ip) await usageBump(env, `ip:${ip}`, -1);
+    await writeTask(env, jid, { state: "error", msg: String(e.message || e) });
+    return oops(String(e.message || e), 500);
+  }
+}
+
+// 1분마다 — 맡겨둔 영상이 다 됐는지 보고, 됐으면 마무리를 람다에 넘긴다
+async function checkPending(env) {
+  const list = await env.COUNTS.list({ prefix: "pend:" });
+  for (const k of list.keys) {
+    const jid = k.name.slice("pend:".length);
+    try {
+      const job = await readJob(env, jid);
+      const p = job?.pending;
+      if (!p || p.stage !== "cuts") { await env.COUNTS.delete(k.name); continue; }
+
+      let allDone = true;
+      for (const r of p.reqs) {
+        if (r.done) continue;
+        const st = await fal.poll(env, r.id);
+        if (st === "failed") throw new Error("생성에 실패했습니다. 다시 시도해주세요.");
+        if (st !== "done") { allDone = false; continue; }
+        // 다 된 영상을 우리 저장소로 옮긴다
+        const src = await fetch(await fal.resultUrl(env, r.id));
+        await env.FILES.put(key(jid, r.out), src.body,
+                            { httpMetadata: { contentType: "video/mp4" } });
+        r.done = true;
+      }
+      job.cuts = p.reqs.map((r) => r.out);
+      await writeJob(env, jid, job);
+      const done = p.reqs.filter((r) => r.done).length;
+      await writeTask(env, jid, { state: "waiting", label: "영상 만들기",
+                                  done, total: p.reqs.length, started: Date.now() / 1000 });
+      if (!allDone) continue;
+
+      // 남은 일(엔딩·합치기·자막)은 람다가 한다. 몇 십 초 걸린다.
+      job.pending = { stage: "finishing", want_ending: p.want_ending };
+      await writeJob(env, jid, job);
+      await writeTask(env, jid, { state: "running", label: "마무리",
+                                  msg: "영상 합치는 중", started: Date.now() / 1000 });
+      await invoke(env, { op: "finish_up", jid, params: { want_ending: p.want_ending } }, false);
+      await env.COUNTS.delete(k.name);
+    } catch (e) {
+      await env.COUNTS.delete(k.name);
+      const job = await readJob(env, jid);
+      if (job) {                       // 실패는 쓴 것으로 치지 않는다
+        job.pending = null;
+        job.render_n = Math.max(0, (job.render_n || 1) - 1);
+        await writeJob(env, jid, job);
+        if (job.owner) await usageBump(env, job.owner, -1);
+      }
+      await writeTask(env, jid, { state: "error", msg: String(e.message || e) });
+    }
+  }
+}
+
+// 포스터 설정으로 짧은 지문을 만든다. 같은 설정이면 같은 값이라 다시 안 그린다.
+async function stamp(env, job) {
+  const src = JSON.stringify([job.poster, job.poster_accent, job.poster_bg,
+                              job.poster_ink, job.poster_font, job.poster_bar]);
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(src));
+  return [...new Uint8Array(buf)].slice(0, 5)
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function newId() {
@@ -206,6 +412,20 @@ function newId() {
 
 export default {
   async fetch(request, env, ctx) {
+    // fal 이 우리 파일을 가져갈 때 쓰는 임시 주소. 세션과 무관하게 열린다.
+    const u = new URL(request.url);
+    if (u.pathname.startsWith("/f/")) {
+      const [, , jid, ...rest] = u.pathname.split("/");
+      const name = decodeURIComponent(rest.join("/"));
+      const ok = await linkOk(env, jid, name, u.searchParams.get("e"), u.searchParams.get("s"));
+      if (!ok) return oops("주소가 만료됐거나 잘못됐습니다.", 403);
+      const obj = await env.FILES.get(key(jid, name));
+      if (!obj) return oops("파일이 없습니다.", 404);
+      return new Response(obj.body, {
+        headers: { "content-type": obj.httpMetadata?.contentType || "application/octet-stream" },
+      });
+    }
+
     const { sid, fresh } = whoIs(request);
     const ip = clientIp(request);
     let resp;
@@ -223,8 +443,8 @@ export default {
     return resp;
   },
 
-  // 1분마다 — fal 에 맡긴 영상이 다 됐는지 확인하는 자리 (다음 단계에서 채운다)
+  // 1분마다 — 맡겨둔 영상이 다 됐는지 확인한다
   async scheduled(event, env, ctx) {
-    return;
+    ctx.waitUntil(checkPending(env));
   },
 };

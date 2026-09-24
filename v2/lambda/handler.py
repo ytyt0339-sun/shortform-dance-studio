@@ -28,6 +28,9 @@ import store      # noqa: E402
 WORK = Path(os.environ.get("WORK_DIR") or "/tmp/jobs")
 SAY_EVERY = 2.0          # 진행 상황을 저장소에 적는 간격(초). 너무 자주 적으면 느리다
 
+# 작업과 상관없이 "알려주기만" 하는 것들. 작업 기록을 건드리지 않는다.
+INFO_OPS = {"font_list"}
+
 
 def _progress_writer(jid, box):
     """진행 상황을 작업 폴더의 task.json 으로 흘려보낸다.
@@ -71,6 +74,12 @@ def handler(event, context):
     d = WORK / jid
     d.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
+    if op in INFO_OPS:
+        try:
+            return {"ok": True, "result": fn(), "seconds": round(time.time() - t0, 1)}
+        except Exception as e:
+            traceback.print_exc()
+            return {"ok": False, "error": "%s: %s" % (type(e).__name__, e)}
     try:
         # 1. 재료 받기. need 를 주면 그것만 받는다 (큰 파일을 괜히 안 받도록)
         got = store.sync_down(jid, d, only=event.get("need"))

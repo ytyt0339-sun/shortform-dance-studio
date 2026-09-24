@@ -310,3 +310,37 @@ def apply_poster_text(d, j, say=_quiet):
                    progress=lambda i, n: say(done=i, total=n))
     j["ending"] = "ending.mp4"
     return j
+
+
+def finish_up(d, j, want_ending=True, say=_quiet):
+    """춤 영상이 다 나온 뒤의 마무리. 엔딩을 붙이고 합치고 자막을 굽는다.
+
+    이미 확인한 엔딩이 있으면 다시 뽑지 않는다 (돈이 든다).
+    """
+    d = Path(d)
+    if want_ending:
+        if not (j.get("ending") and (d / j["ending"]).exists()):
+            build_ending(d, j, say)
+    else:
+        j["ending"] = None
+    return finish_video(d, j, say)
+
+
+def poster_preview(d, j, say=_quiet):
+    """지금 설정으로 포스터를 한 장 그린다. 생성 모델을 안 쓰므로 공짜고 빠르다."""
+    d = Path(d)
+    pl.poster_image(j.get("poster") or ["", "", ""], d / "poster_art.png", **poster_design(j))
+    return j
+
+
+def font_list(d=None, j=None, say=_quiet):
+    """화면이 고를 수 있는 글꼴과 선택지 목록. 서버가 가진 것을 그대로 알려준다."""
+    return {
+        "fonts": pl.system_fonts(),
+        "poster_kinds": [{"id": k, "label": v["label"]} for k, v in pl.POSTER_KINDS.items()],
+        "ending_poses": [{"id": k, "label": v["label"]} for k, v in pl.ENDING_POSES.items()],
+        "styles": [{"id": k, "label": v["label"]} for k, v in pl.SUB_STYLES.items()],
+        "cameras": [{"id": k, "label": v["label"]} for k, v in pl.CAMERA.items()],
+        "style_modes": [{"id": k, "label": v["label"], "note": v["note"]}
+                        for k, v in pl.STYLE_MODES.items()],
+    }
