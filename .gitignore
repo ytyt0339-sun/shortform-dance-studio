@@ -60,10 +60,20 @@ v2/lambda/*
 
 # Cloudflare Worker (화면·API). node_modules 는 뺀다.
 !worker/
+!deploy/
+deploy/*
+!deploy/aws.sh
+!deploy/cloudflare.sh
 worker/*
 !worker/src/
 !worker/src/*.js
 !worker/wrangler.toml
 !worker/package.json
+!worker/public/
+worker/public/*
+!worker/public/index.html
+!worker/public/sample/
+worker/public/sample/*
+!worker/public/sample/*.jpg
 
 !.devcontainer/

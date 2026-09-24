@@ -9,6 +9,12 @@ name = "dance-studio"
 main = "src/index.js"
 compatibility_date = "2025-09-01"
 
+# 화면(HTML)도 이 Worker 가 직접 내준다. 화면과 API 가 같은 주소를 쓰게 되어
+# 화면 코드에서 API 주소를 고칠 일이 없고, 브라우저 보안(CORS) 문제도 없다.
+[assets]
+directory = "./public"
+binding = "PAGE"
+
 # 만든 파일(그림·영상)을 두는 곳. 서버가 몇 대든 같은 것을 본다.
 [[r2_buckets]]
 binding = "FILES"

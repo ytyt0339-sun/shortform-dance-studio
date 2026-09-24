@@ -160,6 +160,49 @@ async function route(request, env, ctx, who, ip) {
     });
   }
 
+  // ── 큰 파일 나눠 올리기 ──
+  // 한 번에 받을 수 있는 크기에 한계가 있어서(무료는 100MB), 브라우저가 파일을
+  // 조각내 보내면 여기서 다시 하나로 잇는다. 폰으로 찍은 긴 영상도 올라간다.
+  if (seg[2] === "upload" && method === "POST" && seg[3] === "start") {
+    const kind = url.searchParams.get("kind") || "reference";
+    const ext = (url.searchParams.get("ext") || ".mp4").toLowerCase();
+    if (!["character", "reference", "bg_photo", "music"].includes(kind)) {
+      return oops("올릴 수 없는 종류입니다.");
+    }
+    const name = kind + ext;
+    const up = await env.FILES.createMultipartUpload(key(jid, name));
+    return json({ name, uploadId: up.uploadId });
+  }
+  if (seg[2] === "upload" && method === "PUT" && seg[3] === "part") {
+    const name = url.searchParams.get("name");
+    const uploadId = url.searchParams.get("uploadId");
+    const n = parseInt(url.searchParams.get("n") || "0", 10);
+    if (!name || !uploadId || !n) return oops("조각 정보가 빠졌습니다.");
+    const up = env.FILES.resumeMultipartUpload(key(jid, name), uploadId);
+    const part = await up.uploadPart(n, request.body);
+    return json({ partNumber: part.partNumber, etag: part.etag });
+  }
+  if (seg[2] === "upload" && method === "POST" && seg[3] === "finish") {
+    const form = await request.formData();
+    const name = String(form.get("name") || "");
+    const uploadId = String(form.get("uploadId") || "");
+    let parts;
+    try {
+      parts = JSON.parse(String(form.get("parts") || "[]"));
+    } catch {
+      return oops("조각 목록이 잘못됐습니다.");
+    }
+    const up = env.FILES.resumeMultipartUpload(key(jid, name), uploadId);
+    await up.complete(parts);
+    const kind = name.split(".")[0];
+    job[kind] = name;
+    await writeJob(env, jid, job);
+    if (kind === "reference") {
+      return runOp(env, jid, "레퍼런스 분석", "analyze_reference", { name });
+    }
+    return json(job);
+  }
+
   // 파일 올리기 → R2 에 넣고, 필요하면 람다에 분석을 맡긴다
   if (method === "POST" && (rest === "character" || rest === "reference" ||
                             rest === "bg_photo" || rest === "music")) {
