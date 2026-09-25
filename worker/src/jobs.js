@@ -56,7 +56,7 @@ export async function listJobs(env, who) {
     if (!j || j.owner !== who) continue;        // 지워졌거나 남의 것
     out.push({
       id: j.id, title: j.title, created: j.created,
-      result: j.result || null, thumb: j.keycut || null,
+      result: Boolean(j.result), spent: j.spent || 0,
     });
   }
   return out;

@@ -10,7 +10,7 @@
 import * as fal from "./fal.js";
 import { invoke } from "./lambda.js";
 import { linkOk, tempLink } from "./sign.js";
-import { setEndingOptions, setOptions, setSubs, STYLE_MODES } from "./settings.js";
+import { scoreCheck, setEndingOptions, setOptions, setSubs, STYLE_MODES } from "./settings.js";
 import {
   blankJob, dropJob, indexAdd, indexDrop, key, listJobs,
   ownedJob, readJob, readTask, writeJob, writeTask,
@@ -88,18 +88,22 @@ async function totalBump(env, n = 1) {
 /** 전체 한도가 남았는가. 다 썼으면 이유를 돌려준다. */
 async function totalLeft(env) {
   const maxM = parseInt(env.MAX_MONTH || "150", 10);
-  const maxD = parseInt(env.MAX_DAY || "20", 10);
+  const maxD = parseInt(env.MAX_DAY || "0", 10);          // 0 이면 하루 한도는 안 본다
   const u = await totalUsed(env);
-  if (u.day >= maxD) return { ok: false, why: "오늘 이 서비스 전체 한도를 다 썼습니다. 내일 다시 이용해 주세요." };
+  if (maxD > 0 && u.day >= maxD) {
+    return { ok: false, why: "오늘 이 서비스 전체 한도를 다 썼습니다. 내일 다시 이용해 주세요." };
+  }
   if (u.month >= maxM) return { ok: false, why: "이번 달 이 서비스 전체 한도를 다 썼습니다. 다음 달에 다시 이용해 주세요." };
   return { ok: true, month: maxM - u.month, day: maxD - u.day };
 }
 
+// 사람별 하루 한도. 0 으로 두면 안 막는다 (지금은 전체 월 한도로만 잠근다).
 async function quotaLeft(env, who, ip) {
-  const perSid = parseInt(env.DAILY_VIDEOS || "2", 10) - (await usageOf(env, who));
-  const perIp = ip
-    ? parseInt(env.DAILY_VIDEOS_IP || "4", 10) - (await usageOf(env, `ip:${ip}`))
-    : perSid;
+  const maxSid = parseInt(env.DAILY_VIDEOS || "0", 10);
+  const maxIp = parseInt(env.DAILY_VIDEOS_IP || "0", 10);
+  if (maxSid <= 0 && maxIp <= 0) return Infinity;
+  const perSid = maxSid > 0 ? maxSid - (await usageOf(env, who)) : Infinity;
+  const perIp = (maxIp > 0 && ip) ? maxIp - (await usageOf(env, `ip:${ip}`)) : Infinity;
   return Math.max(0, Math.min(perSid, perIp));
 }
 
@@ -135,12 +139,18 @@ async function route(request, env, ctx, who, ip) {
   const seg = path.split("/").filter(Boolean);       // ["api", jid, ...]
 
   if (path === "/api/quota") {
+    // 사람별 하루 한도는 꺼져 있고, 서비스 전체의 한 달 한도로만 잠근다.
+    // 화면은 "남은 편수" 하나만 보므로 둘 중 빡빡한 쪽을 준다.
+    const all = await totalLeft(env);
+    const mine = await quotaLeft(env, who, ip);
+    const left = Math.min(mine, all.ok ? (all.month ?? 0) : 0);
     return json({
       made: await usageOf(env, who),
-      limit: parseInt(env.DAILY_VIDEOS || "2", 10),
-      left: await quotaLeft(env, who, ip),
+      limit: parseInt(env.MAX_MONTH || "150", 10),
+      left: Number.isFinite(left) ? left : 9999,
       redo: parseInt(env.REDO_LIMIT || "1", 10),
-      all: await totalLeft(env),          // 서비스 전체 한도 (비용 잠금)
+      scope: "month",                     // 이 숫자는 '이번 달 전체' 기준이다
+      all,
     });
   }
 
@@ -152,7 +162,8 @@ async function route(request, env, ctx, who, ip) {
     return json(job);
   }
 
-  if (path === "/api/jobs") return json({ jobs: await listJobs(env, who) });
+  // 화면이 배열 그대로 받기를 기대한다 (감싸면 목록이 안 그려진다)
+  if (path === "/api/jobs") return json(await listJobs(env, who));
 
   // 화면이 "내가 최신인가" 물어보는 자리. 올릴 때마다 값이 바뀐다.
   if (path === "/api/version") return json({ page_mtime: Number(env.BUILT_AT || 0) });
@@ -174,7 +185,7 @@ async function route(request, env, ctx, who, ip) {
   const rest = seg.slice(2).join("/");
 
   if (!rest) {
-    if (method === "GET") return json(job);
+    if (method === "GET") return json({ ...job, score_check: scoreCheck(job) });
     if (method === "DELETE") {
       await dropJob(env, jid);
       await indexDrop(env, who, jid);
@@ -240,17 +251,25 @@ async function route(request, env, ctx, who, ip) {
   }
 
   // 파일 올리기 → R2 에 넣고, 필요하면 람다에 분석을 맡긴다
+  // 배경·엔딩 사진은 "지우기"도 같은 자리로 온다 (화면이 clear=true 를 보낸다).
   if (method === "POST" && (rest === "character" || rest === "reference" ||
-                            rest === "bg_photo" || rest === "music")) {
+                            rest === "bg_photo" || rest === "music" ||
+                            rest === "ending/photo")) {
+    const field = rest === "ending/photo" ? "ending_photo" : rest;
     const form = await request.formData();
     const file = form.get("file");
-    if (!file || typeof file === "string") return oops("파일이 없습니다.");
+
+    if (String(form.get("clear") || "") === "true" || !file || typeof file === "string") {
+      if (job[field]) await env.FILES.delete(key(jid, job[field]));
+      job[field] = null;
+      return json(await writeJob(env, jid, job));
+    }
     const ext = (file.name.match(/\.[a-z0-9]+$/i) || [".bin"])[0].toLowerCase();
-    const name = rest + ext;
+    const name = field + ext;
     await env.FILES.put(key(jid, name), file.stream(), {
       httpMetadata: { contentType: file.type || "application/octet-stream" },
     });
-    job[rest] = name;
+    job[field] = name;
     await writeJob(env, jid, job);
 
     if (rest === "reference") {
@@ -388,7 +407,7 @@ async function startRender(env, url, jid, job, who, ip, wantEnding) {
   }
   if ((await quotaLeft(env, who, ip)) <= 0) {
     return oops("오늘 만들 수 있는 편수를 다 쓰셨습니다. 내일 다시 이용해 주세요.", 429);
-  }
+  }      // 사람별 한도가 꺼져 있으면 이 검사는 그냥 지나간다
   const all = await totalLeft(env);
   if (!all.ok) return oops(all.why, 429);
 
@@ -401,11 +420,12 @@ async function startRender(env, url, jid, job, who, ip, wantEnding) {
       tempLink(env, base, jid, job.keycut, 6 * 3600),
       tempLink(env, base, jid, job.plate, 6 * 3600),
     ]);
-    const rid = await fal.submit(env, img, vid);
+    const got = await fal.submit(env, img, vid);
     job.render_n = (job.render_n || 0) + 1;
     job.pending = {
       stage: "cuts", want_ending: wantEnding,
-      reqs: [{ id: rid, out: "cuts/full.mp4", done: false }],
+      // 확인 주소도 같이 적어 둔다. 주소를 지어내면 확인이 안 된다.
+      reqs: [{ ...got, out: "cuts/full.mp4", done: false }],
     };
     await writeJob(env, jid, job);
     await env.COUNTS.put(`pend:${jid}`, String(Date.now()), { expirationTtl: 60 * 60 * 6 });
@@ -438,11 +458,11 @@ async function checkPending(env) {
       let allDone = true;
       for (const r of p.reqs) {
         if (r.done) continue;
-        const st = await fal.poll(env, r.id);
+        const st = await fal.poll(env, r);
         if (st === "failed") throw new Error("생성에 실패했습니다. 다시 시도해주세요.");
         if (st !== "done") { allDone = false; continue; }
         // 다 된 영상을 우리 저장소로 옮긴다
-        const src = await fetch(await fal.resultUrl(env, r.id));
+        const src = await fetch(await fal.resultUrl(env, r));
         await env.FILES.put(key(jid, r.out), src.body,
                             { httpMetadata: { contentType: "video/mp4" } });
         r.done = true;

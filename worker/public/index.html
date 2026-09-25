@@ -616,16 +616,17 @@ async function reload(){
   render(); await loadBar(); loadQuota();
 }
 
-// 하루에 만들 수 있는 편수. 서버가 세고 있고 화면에는 남은 수만 보여준다.
+// 만들 수 있는 편수. 서버가 세고 있고 화면에는 남은 수만 보여준다.
+// 사람별 하루 한도는 꺼져 있고, 서비스 전체의 한 달 한도로만 잠근다.
 async function loadQuota(){
   try {
     const q = await api('/api/quota');
     const made = JOB && JOB.render_n ? JOB.render_n : 0;
     const redoLeft = Math.max(0, (q.redo + 1) - made);
     $('#quotaLine').innerHTML = q.left > 0
-      ? `오늘 <b>${q.left}편</b> 더 만들 수 있습니다` +
+      ? `이번 달 <b>${q.left}편</b> 더 만들 수 있습니다` +
         (made > 0 ? ` · 이 영상은 <b>${redoLeft}번</b> 더 다시 만들 수 있습니다` : '')
-      : `<b style="color:var(--err)">오늘 만들 수 있는 ${q.limit}편을 다 쓰셨습니다</b> — 내일 다시 이용해 주세요`;
+      : `<b style="color:var(--err)">이번 달 한도(${q.limit}편)를 다 썼습니다</b> — 다음 달에 다시 이용해 주세요`;
   } catch(e){ $('#quotaLine').textContent = ''; }
 }
 

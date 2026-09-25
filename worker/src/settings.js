@@ -70,3 +70,27 @@ export function setSubs(job, f) {
   job.subs_on = String(f.get("subs_on") ?? "true") === "true";
   return { job };
 }
+
+
+// 레퍼런스 적합도 판정. 지금 서버(파이썬)와 같은 규칙을 쓴다.
+const MIN_SCORE = 70, WARN_SCORE = 85;
+const TIPS = {
+  "전신노출": "머리부터 발끝까지 다 나오는 구간이 부족합니다. 다리가 잘리면 캐릭터 다리도 뭉개집니다.",
+  "단독인물": "다른 사람이 함께 잡힙니다.",
+  "검출안정성": "동작이 흐릿하거나 빨라서 사람을 놓치는 구간이 많습니다.",
+  "화면내유지": "인물이 화면 밖으로 자주 벗어납니다.",
+  "동작크기": "동작이 너무 작아서 캐릭터가 거의 안 움직일 수 있습니다.",
+  "컷전환없음": "중간에 컷이 바뀝니다. 한 번에 찍은 영상이어야 합니다.",
+};
+
+export function scoreCheck(job) {
+  const sc = job.clip_score;
+  if (!sc) return null;
+  const score = sc.score || 0;
+  const reasons = [...(sc.fail || [])];
+  for (const [k, v] of Object.entries(sc.sub || {})) {
+    if (TIPS[k] && v < 0.6 && !reasons.includes(TIPS[k])) reasons.push(TIPS[k]);
+  }
+  const level = (!sc.ok || score < MIN_SCORE) ? "block" : (score < WARN_SCORE ? "warn" : "ok");
+  return { level, score, reasons, min: MIN_SCORE, warn: WARN_SCORE };
+}

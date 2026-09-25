@@ -921,8 +921,10 @@ SUB_STYLES = {
     # 가는 글씨 느낌은 유지하면서 읽히게 한다.
     "soft": dict(label="얇고 넓게 (하늘 위 자막)", bold=0, spacing=0.09,
                  outline=0.045, shadow=2.0, size=0.032, font="Noto Sans KR Light"),
+    # 글꼴 이름은 서버에도 있는 것으로 둔다. 윈도우 전용 이름(맑은 고딕)을 쓰면
+    # 리눅스 서버에서 글꼴을 못 찾아 자막이 통째로 안 보인다 (겪었다).
     "bold": dict(label="굵고 또렷하게", bold=-1, spacing=0.0,
-                 outline=0.14, shadow=1.0, size=0.042, font="Malgun Gothic"),
+                 outline=0.14, shadow=1.0, size=0.042, font="Noto Sans KR"),
     "serif": dict(label="명조체", bold=0, spacing=0.05,
                   outline=0.0, shadow=2.0, size=0.033, font="Noto Serif KR Light"),
 }
@@ -1135,16 +1137,24 @@ def burn_subs(video, subs, out_path, w=720, h=1280, **style):
     try:
         shutil.copy(str(video), os.path.join(d, "in.mp4"))
         # ffmpeg 필터 인자에 윈도우 경로(C:)를 그대로 넣으면 콜론 때문에 깨진다.
-        # app 폴더에서 실행하고 상대경로만 쓴다.
-        ass = app_dir / ("_sub_%s.ass" % os.path.basename(d)[-8:])
+        # 그래서 윈도우에서는 app 폴더에서 실행하고 상대경로만 쓴다.
+        # 리눅스(람다)에서는 app 폴더가 읽기 전용이라 거기에 파일을 못 만든다.
+        # 그쪽에서는 임시 폴더에 만들고 글꼴 폴더만 전체 경로로 가리킨다.
+        if os.name == "nt":
+            ass = app_dir / ("_sub_%s.ass" % os.path.basename(d)[-8:])
+            vf = "subtitles=%s:fontsdir=fonts" % ass.name
+            run_in = str(app_dir)
+        else:
+            ass = Path(d) / "sub.ass"
+            vf = "subtitles=sub.ass:fontsdir=%s" % (app_dir / "fonts")
+            run_in = d
         write_ass(subs, ass, w, h, **style)
-        vf = "subtitles=%s:fontsdir=fonts" % ass.name
         try:
             subprocess.run(["ffmpeg", "-v", "error", "-y",
                             "-i", os.path.join(d, "in.mp4"), "-vf", vf, "-c:a", "copy",
                             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18",
                             os.path.join(d, "out.mp4")],
-                           cwd=str(app_dir), check=True)
+                           cwd=run_in, check=True)
         finally:
             ass.unlink(missing_ok=True)
         shutil.copy(os.path.join(d, "out.mp4"), str(out_path))

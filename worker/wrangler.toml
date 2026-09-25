@@ -29,14 +29,16 @@ id = "2a40d2be59974294ae757dff14fff5be"
 crons = ["* * * * *"]     # 1분마다: fal 에 맡긴 영상이 다 됐는지 확인
 
 [vars]
-DAILY_VIDEOS = "2"
-DAILY_VIDEOS_IP = "4"
+# 사람별 하루 한도는 끈다 (0 = 안 막음). 전체 월 한도로만 잠근다.
+DAILY_VIDEOS = "0"
+DAILY_VIDEOS_IP = "0"
 REDO_LIMIT = "1"
 KEEP_HOURS = "336"
 # 서비스 전체 한도. 이걸 넘으면 아무도 새로 못 만든다 (요금 잠금장치).
 # 클라우드 무료 한도는 월 1,000편쯤에서 걸리므로 그보다 낮게 둔다.
 # 실제로 돈이 드는 건 fal 이다 — 월 150편이면 약 45만 원.
 MAX_MONTH = "150"
-MAX_DAY = "20"
+# 하루 한도도 끈다 (0 = 안 막음)
+MAX_DAY = "0"
 BUILT_AT = "0"
 # 비밀값(FAL_KEY, AWS 열쇠)은 여기 두지 않는다. wrangler secret put 으로 넣는다.

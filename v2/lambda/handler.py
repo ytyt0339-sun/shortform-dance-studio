@@ -106,12 +106,22 @@ def handler(event, context):
             return {"ok": False, "error": "%s: %s" % (type(e).__name__, e)}
     try:
         # 1. 재료 받기. need 를 주면 그것만 받는다 (큰 파일을 괜히 안 받도록)
-        got = store.sync_down(jid, d, only=event.get("need"))
         f = d / "job.json"
-        if f.exists():
+        # 작업 기록은 **반드시** 저장소의 지금 값을 읽는다.
+        # 람다는 한 번 깨어나면 임시 폴더를 그대로 두고 다음 일을 받는다.
+        # 그래서 여기서 낡은 사본을 쓰면, 그사이 바뀐 내용(예: 다 만들어진
+        # 춤 영상 목록)을 못 보고 그 낡은 값으로 덮어써 버린다 (실제로 겪었다).
+        fresh = store.read_json("%s/job.json" % jid)
+        if fresh is not None:
+            j = fresh
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(json.dumps(j, ensure_ascii=False, indent=2), encoding="utf-8")
+        elif f.exists():
             j = json.loads(f.read_text(encoding="utf-8"))
         else:
             j = event.get("job") or {}
+
+        got = store.sync_down(jid, d, only=event.get("need"))
 
         # 재료가 없는데 시작하면 한참 뒤에 엉뚱한 자리에서 터진다.
         # 여기서 먼저 확인하고 알아들을 수 있는 말로 알려준다.

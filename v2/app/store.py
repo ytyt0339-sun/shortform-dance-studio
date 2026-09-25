@@ -179,13 +179,19 @@ def sync_down(rel_prefix, local_dir, only=None):
         return 0
     d = Path(local_dir)
     n = 0
+    c = _s3()
     for rel in list_keys(rel_prefix):
         name = rel[len(str(rel_prefix).rstrip("/")) + 1:]
         if only is not None and name not in only:
             continue
         p = d / name
         if p.exists() and p.stat().st_size > 0:
-            continue
+            # 같은 이름으로 다시 만들어진 파일일 수 있다. 크기가 같을 때만 건너뛴다.
+            try:
+                if c.head_object(Bucket=BUCKET, Key=_key(rel))["ContentLength"] == p.stat().st_size:
+                    continue
+            except Exception:
+                continue
         p.parent.mkdir(parents=True, exist_ok=True)
         try:
             _s3().download_file(BUCKET, _key(rel), str(p))
