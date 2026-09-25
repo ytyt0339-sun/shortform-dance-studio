@@ -60,6 +60,41 @@ async function usageBump(env, who, n = 1) {
   return v;
 }
 
+// ── 전체 한도 ────────────────────────────────────────────────────────────
+// AWS·Cloudflare 는 "여기서 멈춤" 을 안 준다. 넘으면 그냥 요금이 붙는다.
+// 그래서 우리가 직접 센다. 이 숫자를 넘으면 아무도 새로 못 만든다.
+//
+// 진짜 돈이 드는 건 fal 이다(1편당 2~3천 원). 클라우드 무료 한도는
+// 월 1,000편쯤에서 걸리므로, 아래 숫자를 그보다 낮게 두면 둘 다 막힌다.
+const monthKey = () => `all:${new Date().toISOString().slice(0, 7)}`;   // all:2026-09
+const dayKey = () => `all:${today()}`;                                 // all:2026-09-25
+
+async function totalUsed(env) {
+  const [m, d] = await Promise.all([
+    env.COUNTS.get(monthKey()), env.COUNTS.get(dayKey()),
+  ]);
+  return { month: parseInt(m || "0", 10), day: parseInt(d || "0", 10) };
+}
+
+async function totalBump(env, n = 1) {
+  const u = await totalUsed(env);
+  await Promise.all([
+    // 두 달치만 남기고 저절로 사라진다 (달이 키에 들어 있다)
+    env.COUNTS.put(monthKey(), String(Math.max(0, u.month + n)), { expirationTtl: 60 * 86400 }),
+    env.COUNTS.put(dayKey(), String(Math.max(0, u.day + n)), { expirationTtl: 3 * 86400 }),
+  ]);
+}
+
+/** 전체 한도가 남았는가. 다 썼으면 이유를 돌려준다. */
+async function totalLeft(env) {
+  const maxM = parseInt(env.MAX_MONTH || "150", 10);
+  const maxD = parseInt(env.MAX_DAY || "20", 10);
+  const u = await totalUsed(env);
+  if (u.day >= maxD) return { ok: false, why: "오늘 이 서비스 전체 한도를 다 썼습니다. 내일 다시 이용해 주세요." };
+  if (u.month >= maxM) return { ok: false, why: "이번 달 이 서비스 전체 한도를 다 썼습니다. 다음 달에 다시 이용해 주세요." };
+  return { ok: true, month: maxM - u.month, day: maxD - u.day };
+}
+
 async function quotaLeft(env, who, ip) {
   const perSid = parseInt(env.DAILY_VIDEOS || "2", 10) - (await usageOf(env, who));
   const perIp = ip
@@ -105,6 +140,7 @@ async function route(request, env, ctx, who, ip) {
       limit: parseInt(env.DAILY_VIDEOS || "2", 10),
       left: await quotaLeft(env, who, ip),
       redo: parseInt(env.REDO_LIMIT || "1", 10),
+      all: await totalLeft(env),          // 서비스 전체 한도 (비용 잠금)
     });
   }
 
@@ -353,9 +389,12 @@ async function startRender(env, url, jid, job, who, ip, wantEnding) {
   if ((await quotaLeft(env, who, ip)) <= 0) {
     return oops("오늘 만들 수 있는 편수를 다 쓰셨습니다. 내일 다시 이용해 주세요.", 429);
   }
+  const all = await totalLeft(env);
+  if (!all.ok) return oops(all.why, 429);
 
   await usageBump(env, who, 1);
   if (ip) await usageBump(env, `ip:${ip}`, 1);
+  await totalBump(env, 1);
   const base = url.origin;
   try {
     const [img, vid] = await Promise.all([
@@ -380,6 +419,7 @@ async function startRender(env, url, jid, job, who, ip, wantEnding) {
     // 실패한 것은 쓴 것으로 치지 않는다 (안 그러면 실패만으로 막힌다)
     await usageBump(env, who, -1);
     if (ip) await usageBump(env, `ip:${ip}`, -1);
+    await totalBump(env, -1);
     await writeTask(env, jid, { state: "error", msg: String(e.message || e) });
     return oops(String(e.message || e), 500);
   }
@@ -429,6 +469,7 @@ async function checkPending(env) {
         job.render_n = Math.max(0, (job.render_n || 1) - 1);
         await writeJob(env, jid, job);
         if (job.owner) await usageBump(env, job.owner, -1);
+        await totalBump(env, -1);
       }
       await writeTask(env, jid, { state: "error", msg: String(e.message || e) });
     }
@@ -486,8 +527,13 @@ export default {
     return resp;
   },
 
-  // 1분마다 — 맡겨둔 영상이 다 됐는지 확인한다
+  // 1분마다 — 맡겨둔 영상이 다 됐는지 확인하고, 람다가 잠들지 않게 깨워 둔다.
+  //
+  // 람다는 한동안 안 쓰면 잠들고, 다시 깨우는 데 몇 분이 걸린다(이미지가 2.5GB).
+  // 가벼운 인사만 보내 깨워 두면 사용자가 그 몇 분을 안 기다려도 된다.
+  // 인사 한 번은 0.1초짜리라 무료 한도에 견줘 없는 셈이다.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(checkPending(env));
+    ctx.waitUntil(invoke(env, { op: "ping", jid: "_warm" }, false).catch(() => {}));
   },
 };

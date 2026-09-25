@@ -1,19 +1,23 @@
 # 람다는 웹 서버가 아니다. fastapi·uvicorn 은 뺀다 (이미지가 작을수록 빨리 깨어난다).
+#
+# 자세 인식은 0.10 계열을 쓴다. 1.0 은 내부 메모리 할당기가 CPU 개수를 읽으려다
+# 람다 안에서 그대로 죽는다 (CHECK in NumCPUs). 0.10 에는 그 부분이 없다.
+# 그래서 numpy·opencv 도 그 시절과 맞는 버전으로 맞춘다.
 
 # 생성 모델 호출 (키컷 같은 짧은 것은 람다 안에서 부른다)
 fal-client==0.13.1
 
 # 이미지 · 영상 처리
-pillow==12.2.0
-numpy==2.4.6
-opencv-python-headless==5.0.0.93
+pillow==11.3.0
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
 fonttools==4.63.0
 
 # 엔딩 포스터에서 표지판 자리를 찾을 때 쓴다
-scipy==1.15.3
+scipy==1.13.1
 
 # 춤 영상 채점 (자세 인식)
-mediapipe==1.0.1
+mediapipe==0.10.21
 
 # R2 저장소 (S3 호환)
 boto3==1.42.89

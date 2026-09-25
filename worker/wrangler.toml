@@ -23,8 +23,7 @@ bucket_name = "dance-runs"
 # 하루 편수 같은 작은 숫자. R2 보다 읽기가 빠르고 싸다.
 [[kv_namespaces]]
 binding = "COUNTS"
-id = "0123456789abcdef0123456789abcdef"   # 계정 만든 뒤 진짜 값으로 바꾼다
-                                        # (내 컴퓨터에서 시험할 때는 아무 값이나 된다)
+id = "2a40d2be59974294ae757dff14fff5be"
 
 [triggers]
 crons = ["* * * * *"]     # 1분마다: fal 에 맡긴 영상이 다 됐는지 확인
@@ -34,7 +33,10 @@ DAILY_VIDEOS = "2"
 DAILY_VIDEOS_IP = "4"
 REDO_LIMIT = "1"
 KEEP_HOURS = "336"
-# 임시 파일 주소에 서명할 때 쓰는 값. 올릴 때는 wrangler secret 으로 진짜 값을 넣는다.
-LINK_SECRET = "시험용-아무거나"
+# 서비스 전체 한도. 이걸 넘으면 아무도 새로 못 만든다 (요금 잠금장치).
+# 클라우드 무료 한도는 월 1,000편쯤에서 걸리므로 그보다 낮게 둔다.
+# 실제로 돈이 드는 건 fal 이다 — 월 150편이면 약 45만 원.
+MAX_MONTH = "150"
+MAX_DAY = "20"
 BUILT_AT = "0"
 # 비밀값(FAL_KEY, AWS 열쇠)은 여기 두지 않는다. wrangler secret put 으로 넣는다.

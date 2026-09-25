@@ -35,11 +35,18 @@ def _s3():
                          response_checksum_validation="when_required")
         except TypeError:
             cfg = Config()            # 오래된 botocore 는 이 설정이 없다
+        # 람다 안에서는 AWS_ACCESS_KEY_ID 같은 이름을 쓸 수 없다(예약어라 막힌다).
+        # 그래서 R2 열쇠는 S3_KEY / S3_SECRET 이라는 이름으로 받는다.
+        extra = {}
+        if os.environ.get("S3_KEY"):
+            extra["aws_access_key_id"] = os.environ["S3_KEY"]
+            extra["aws_secret_access_key"] = os.environ.get("S3_SECRET") or ""
         _S3 = boto3.client(
             "s3",
             endpoint_url=os.environ.get("S3_ENDPOINT") or None,   # R2·GCS 는 여기를 채운다
             region_name=os.environ.get("S3_REGION") or None,
             config=cfg,
+            **extra
         )
     return _S3
 

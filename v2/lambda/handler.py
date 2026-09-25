@@ -29,7 +29,7 @@ WORK = Path(os.environ.get("WORK_DIR") or "/tmp/jobs")
 SAY_EVERY = 2.0          # 진행 상황을 저장소에 적는 간격(초). 너무 자주 적으면 느리다
 
 # 작업과 상관없이 "알려주기만" 하는 것들. 작업 기록을 건드리지 않는다.
-INFO_OPS = {"font_list"}
+INFO_OPS = {"font_list", "ping"}
 
 
 def _write_task(jid, task):
@@ -86,6 +86,11 @@ def handler(event, context):
     params = event.get("params") or {}
     if not op or not jid:
         return {"ok": False, "error": "op 과 jid 가 있어야 합니다."}
+    # 깨워만 두는 호출. 아무 일도 안 하고 바로 답한다.
+    # 2.5GB 이미지를 처음 끌어오는 데 몇 분이 걸려서, 잠들기 전에 깨워 둔다.
+    if op == "ping":
+        return {"ok": True, "result": "awake"}
+
     fn = getattr(ops, op, None)
     if fn is None or op.startswith("_"):
         return {"ok": False, "error": "모르는 작업입니다: %s" % op}
