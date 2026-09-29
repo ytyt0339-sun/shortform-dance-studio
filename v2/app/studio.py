@@ -1293,16 +1293,13 @@ def _finish_up(jid, d, owner):
         want_ending = (j.get("pending") or {}).get("want_ending", True)
         task_set(jid, state="running", msg="영상 합치는 중", done=0, total=0)
 
-        ending = None
         if want_ending:
-            if j.get("ending") and (d / j["ending"]).exists():
-                ending = j["ending"]      # 이미 확인한 엔딩은 다시 뽑지 않는다
-            else:
+            if not (j.get("ending") and (d / j["ending"]).exists()):
                 task_set(jid, msg="엔딩 장면 그리는 중")
-                ending = build_ending(j, d, jid)
+                build_ending(j, d, jid)   # 만든 이름은 j["ending"] 에 담긴다
             write_job(jid, j)
-
-        j["ending"] = ending
+        else:
+            j["ending"] = None
         ops.finish_video(d, j, say_to(jid))
         j["pending"] = None
         write_job(jid, j)

@@ -616,11 +616,27 @@ async function reload(){
   render(); await loadBar(); loadQuota();
 }
 
+// 멈춤 안내 띠. 한 번만 붙인다.
+function showPaused(){
+  if (document.getElementById('pausedBar')) return;
+  const d = document.createElement('div');
+  d.id = 'pausedBar';
+  d.style.cssText = 'background:#FFF8E1;color:#6B4A0F;border-bottom:1px solid #E8CE86;'
+    + 'padding:13px 20px;font-size:14px;line-height:1.7;text-align:center';
+  d.innerHTML = '<b>지금은 새로 만들기를 멈춰 두었습니다.</b> 한 편을 만들 때마다 실제 비용이'
+    + ' 들어 잠시 잠가 두었습니다 — 화면 구성과 이미 만들어 둔 결과물은 그대로 보실 수 있습니다.';
+  document.body.prepend(d);
+}
+
 // 만들 수 있는 편수. 서버가 세고 있고 화면에는 남은 수만 보여준다.
 // 사람별 하루 한도는 꺼져 있고, 서비스 전체의 한 달 한도로만 잠근다.
 async function loadQuota(){
   try {
     const q = await api('/api/quota');
+    // 잠시 멈춘 동안에는 남은 편수 대신 안내만 띄운다. 눌러 보기 전에 알 수
+    // 있어야 하므로 화면 맨 위에도 띠를 하나 붙인다.
+    if (q.paused) { showPaused(); $('#quotaLine').innerHTML =
+      '<b style="color:var(--err)">지금은 새로 만들기를 멈춰 두었습니다</b>'; return; }
     const made = JOB && JOB.render_n ? JOB.render_n : 0;
     const redoLeft = Math.max(0, (q.redo + 1) - made);
     $('#quotaLine').innerHTML = q.left > 0
@@ -1320,7 +1336,12 @@ $('#pFontBtn').onclick = e => {
 
 (async function init(){
   const js = await api('/api/jobs');
-  JOB = js.length ? await api('/api/' + js[0].id) : await api('/api/new', {method:'POST'});
+  // 주소에 ?j=작업번호 를 붙이면 그 작업을 바로 연다 (작업을 링크로 주고받을 때 쓴다)
+  const want = new URLSearchParams(location.search).get('j');
+  JOB = null;
+  if (want) JOB = await api('/api/' + want).catch(() => null);
+  if (!JOB) JOB = js.length ? await api('/api/' + js[0].id)
+                            : await api('/api/new', {method:'POST'});
   try {
     const v = await api('/api/version');
     const t = new Date(v.page_mtime * 1000);

@@ -114,12 +114,14 @@ async function runOp(env, jid, label, op, params = {}, wait = false) {
   if (t.state === "running" && Date.now() / 1000 - (t.started || 0) < 25 * 60) {
     return oops("이미 다른 작업이 진행 중입니다.", 409);
   }
+  const started = Date.now() / 1000;
   await writeTask(env, jid, {
-    state: "running", label, msg: null, done: 0, total: 0,
-    started: Date.now() / 1000,
+    state: "running", label, msg: null, done: 0, total: 0, started,
   });
   try {
-    const out = await invoke(env, { op, jid, params, label }, wait);
+    // 시작 시각을 같이 보낸다. 람다가 진행 상황을 적을 때 이 값을 그대로 달아야
+    // 화면의 "몇 초 지남" 이 0 으로 되돌아가지 않는다.
+    const out = await invoke(env, { op, jid, params, label, started }, wait);
     if (wait) {
       await writeTask(env, jid, { state: "done", at: Date.now() / 1000 });
       return json(out.job || {});
@@ -138,6 +140,14 @@ async function route(request, env, ctx, who, ip) {
   const method = request.method;
   const seg = path.split("/").filter(Boolean);       // ["api", jid, ...]
 
+  // 잠시 멈춤. 한 편 만들 때마다 fal 에 실제로 돈이 나가므로, 구경만 할 수
+  // 있게 열어 두고 새로 만드는 길만 막는다. 읽기(GET)는 그대로 통과시켜
+  // 화면과 이미 만든 결과물, /how 문서는 계속 보인다.
+  // 다시 열 때: wrangler.toml 의 PAUSED 를 "0" 으로 바꾸고 올린다.
+  if (env.PAUSED === "1" && method !== "GET" && method !== "HEAD") {
+    return oops("지금은 새로 만들기를 멈춰 두었습니다. 화면과 이미 만든 결과물은 그대로 보실 수 있습니다.", 503);
+  }
+
   if (path === "/api/quota") {
     // 사람별 하루 한도는 꺼져 있고, 서비스 전체의 한 달 한도로만 잠근다.
     // 화면은 "남은 편수" 하나만 보므로 둘 중 빡빡한 쪽을 준다.
@@ -150,6 +160,7 @@ async function route(request, env, ctx, who, ip) {
       left: Number.isFinite(left) ? left : 9999,
       redo: parseInt(env.REDO_LIMIT || "1", 10),
       scope: "month",                     // 이 숫자는 '이번 달 전체' 기준이다
+      paused: env.PAUSED === "1",         // 멈춘 동안에는 화면이 안내만 띄운다
       all,
     });
   }
@@ -477,9 +488,11 @@ async function checkPending(env) {
       // 남은 일(엔딩·합치기·자막)은 람다가 한다. 몇 십 초 걸린다.
       job.pending = { stage: "finishing", want_ending: p.want_ending };
       await writeJob(env, jid, job);
+      const startedAt = Date.now() / 1000;
       await writeTask(env, jid, { state: "running", label: "마무리",
-                                  msg: "영상 합치는 중", started: Date.now() / 1000 });
-      await invoke(env, { op: "finish_up", jid, params: { want_ending: p.want_ending } }, false);
+                                  msg: "영상 합치는 중", started: startedAt });
+      await invoke(env, { op: "finish_up", jid, label: "마무리", started: startedAt,
+                          params: { want_ending: p.want_ending } }, false);
       await env.COUNTS.delete(k.name);
     } catch (e) {
       await env.COUNTS.delete(k.name);

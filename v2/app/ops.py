@@ -201,7 +201,9 @@ def make_still(d, j, say=_quiet):
     j["spent"] = round(j.get("spent", 0) + pl.NB_PRICE, 3)
     j["ending_baked"] = None
     bake_poster(d, j)
-    return out
+    # 돌려주는 것은 언제나 작업 기록이다. 파일 경로를 돌려주면 그대로 기록
+    # 자리에 들어가 저장할 때 터진다 (화면에 PosixPath ... 오류로 떴다).
+    return j
 
 
 def bake_poster(d, j):
@@ -248,7 +250,7 @@ def build_ending(d, j, say=_quiet):
                        d / "ending.mp4", **poster_design(j),
                        progress=lambda i, n: say(done=i, total=n))
     j["ending"] = "ending.mp4"
-    return "ending.mp4"
+    return j          # 만든 파일 이름은 j["ending"] 에 들어 있다
 
 
 def apply_subs(d, j, say=_quiet):

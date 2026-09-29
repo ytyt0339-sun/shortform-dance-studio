@@ -131,7 +131,10 @@ def handler(event, context):
 
         # 2. 일하기 — 서버와 같은 함수
         before = store.snapshot(d)
-        box = {"label": event.get("label") or op}
+        # 시작 시각을 계속 달고 다닌다. 이걸 빠뜨리면 화면의 "몇 초 지남" 이
+        # 중간에 0 으로 되돌아간다 (부르는 쪽이 준 값을 그대로 쓴다).
+        box = {"label": event.get("label") or op,
+               "started": event.get("started") or time.time()}
         j = fn(d, j, say=_progress_writer(jid, box), **params)
 
         # 3. 결과 돌려주기
@@ -141,11 +144,13 @@ def handler(event, context):
         # 맡겨놓고 돌아가는 방식에서는 부르는 쪽이 결과를 못 본다.
         # 그래서 끝났다는 표시도 여기서 직접 적는다 (화면이 이 파일을 본다).
         _write_task(jid, {"state": "done", "at": time.time(),
-                          "label": event.get("label") or op})
+                          "label": event.get("label") or op,
+                          "started": event.get("started")})
         return {"ok": True, "job": j, "files": sent, "got": got,
                 "seconds": round(time.time() - t0, 1)}
     except Exception as e:
         traceback.print_exc()
         msg = friendly(e)
-        _write_task(jid, {"state": "error", "msg": msg, "at": time.time()})
+        _write_task(jid, {"state": "error", "msg": msg, "at": time.time(),
+                          "started": event.get("started")})
         return {"ok": False, "error": msg, "seconds": round(time.time() - t0, 1)}
