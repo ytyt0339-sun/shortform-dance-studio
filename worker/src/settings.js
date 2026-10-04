@@ -18,7 +18,8 @@ const num = (v) => (v === null || v === "" || isNaN(Number(v)) ? null : Number(v
 export function setOptions(job, f) {
   const s = (k) => (f.has(k) ? String(f.get(k)) : null);
 
-  if (["reference", "file", "none"].includes(s("music_src"))) job.music_src = s("music_src");
+  // 음악 파일 따로 올리기는 없앴다. 남는 길은 춤 영상 소리와 소리 없음뿐이다.
+  if (["reference", "none"].includes(s("music_src"))) job.music_src = s("music_src");
   if (["true", "false"].includes(s("one_shot"))) job.one_shot = s("one_shot") === "true";
   if (["top", "bottom"].includes(s("subs_pos"))) job.subs_pos = s("subs_pos");
   if (SUB_STYLES.includes(s("subs_style"))) job.subs_style = s("subs_style");

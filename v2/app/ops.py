@@ -11,6 +11,7 @@
 
 이 파일은 웹이나 세션을 모르고, 파일과 기록만 다룬다. 그래야 어디서든 돈다.
 """
+import time
 from pathlib import Path
 
 import pipeline as pl
@@ -47,6 +48,10 @@ def analyze_reference(d, j, name, say=_quiet, app=None):
     res = rf.analyze(str(d / "plate.mp4"), app)
     vd.thumb_sheet(str(d / "plate.mp4"), str(d / "plate_sheet.jpg"))
     j["plate"] = "plate.mp4"
+    # 파일 이름은 늘 plate.mp4 라서, 다른 영상을 올려도 브라우저가 먼저 받아둔
+    # 것을 다시 보여준다 (점수만 바뀌고 화면은 그대로인 일이 있었다).
+    # 바뀔 때마다 이 번호를 갱신해 화면이 주소 뒤에 붙여 쓰게 한다.
+    j["plate_at"] = int(time.time())
     j["clip_score"] = res
     j["segments"] = max(1, int(dur // pl.CUT_SEC))
 
@@ -96,6 +101,7 @@ def pick_segment(d, j, t0, say=_quiet, app=None):
     j["clip_score"] = rf.analyze(str(d / "plate.mp4"), app)
     vd.thumb_sheet(str(d / "plate.mp4"), str(d / "plate_sheet.jpg"))
     j["crop"] = box
+    j["plate_at"] = int(time.time())      # 구간을 바꿔도 화면이 새 영상을 받게
     j["clip_start"] = round(t0, 1)
     j["clip_dur"] = round(dur, 1)
     j["segments"] = max(1, int(dur // pl.CUT_SEC))
@@ -320,7 +326,10 @@ def finish_up(d, j, want_ending=True, say=_quiet):
     이미 확인한 엔딩이 있으면 다시 뽑지 않는다 (돈이 든다).
     """
     d = Path(d)
-    if want_ending:
+    # 엔딩 장면을 만들지 않았으면 엔딩은 넣지 않는다. 전에는 여기서 장면을
+    # 새로 뽑아 버려서, 포스터를 손도 안 댄 사람에게도 엔딩이 붙고 돈이 나갔다.
+    has = bool(j.get("ending") or j.get("ending_still"))
+    if want_ending and has:
         if not (j.get("ending") and (d / j["ending"]).exists()):
             build_ending(d, j, say)
     else:

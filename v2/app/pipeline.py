@@ -277,6 +277,12 @@ DEFAULT_POSE = ("Pose: standing upright facing the camera in a relaxed ready sta
 
 # 장소 사진을 주면 그 장소를 그대로 옮겨 그린다. 사진을 일러스트로 바꾸는 셈이라
 # 실제 캠퍼스·건물처럼 알아볼 수 있는 배경이 나온다.
+BG_KEEP = (
+    "The FIRST reference image already shows this character standing in its scene. Reuse THAT "
+    "background: the same location, architecture, ground surface, plants, props, colour palette, "
+    "weather and time of day, seen from a similar viewpoint, so both pictures read as the same "
+    "place at the same moment. Only the framing changes to make room for the sign. ")
+
 PLACE_REF = (
     "The SECOND reference image is a photograph of a real place. Recreate THAT location as the "
     "setting: keep its recognizable layout, buildings, landmarks, materials, colors and time of "
@@ -443,6 +449,10 @@ def poster_scene(key_path, bg_prompt, out_path, kind="wall", pose="point", scene
         imgs = [key_path, key_path] if not place_photo else [key_path, place_photo]
         if place_photo:
             extra += PLACE_REF
+        elif not (scene or "").strip():
+            # 엔딩 배경을 따로 안 고른 경우. 글로만 맡기면 키컷과 미묘하게 다른
+            # 장소가 나와서, 키컷 그림의 배경을 그대로 쓰라고 못박는다.
+            extra = BG_KEEP + extra
         st, li = mode_of(style_mode)
         return _nb(body + extra + st + EMPTY_HANDS + li, imgs, out_path, tmp)
     finally:
@@ -590,31 +600,92 @@ def _poster_art(w, h, lines, accent=None, bg=None, ink=None, font=None, bar=True
         d.rectangle([0, 0, w, int(h * .16)], fill=ac)
     safe = w * .84
 
-    def fit(path, txt, size):
-        """포스터 폭을 넘으면 글자가 잘린다. 들어갈 때까지 줄인다."""
-        try:
-            f = ImageFont.truetype(path, size)
-        except OSError:
-            f = ImageFont.truetype(FONT_B, size)
-            path = FONT_B
-        while size > 8 and d.textbbox((0, 0), txt, font=f)[2] > safe:
-            size = int(size * .94)
-            f = ImageFont.truetype(path, size)
-        return f
+    def wide(txt, f):
+        return d.textbbox((0, 0), txt, font=f)[2] - d.textbbox((0, 0), txt, font=f)[0]
 
-    def mid(txt, f, y, fill):
-        bb = d.textbbox((0, 0), txt, font=f)
-        d.text(((w - (bb[2] - bb[0])) / 2 - bb[0], y), txt, font=f, fill=fill)
+    def wrap(txt, f):
+        """폭에 맞게 줄을 나눈다. 띄어쓰기로 먼저 끊고, 한 덩어리가 그래도
+        넘치면 글자 단위로 끊는다 (한글은 띄어쓰기가 드물어 이 경우가 흔하다)."""
+        out, cur = [], ""
+        for word in txt.split(" "):
+            nxt = (cur + " " + word) if cur else word
+            if cur and wide(nxt, f) > safe:
+                out.append(cur)
+                cur = word
+            else:
+                cur = nxt
+        if cur:
+            out.append(cur)
+        done = []
+        for ln in out:
+            while len(ln) > 1 and wide(ln, f) > safe:
+                cut = len(ln)
+                while cut > 1 and wide(ln[:cut], f) > safe:
+                    cut -= 1
+                done.append(ln[:cut])
+                ln = ln[cut:]
+            if ln:
+                done.append(ln)
+        return done
+
+    def load(path, size):
+        try:
+            return ImageFont.truetype(path, size), path
+        except OSError:
+            return ImageFont.truetype(FONT_B, size), FONT_B
+
+    def fit(path, txt, size, max_lines):
+        """줄바꿈까지 해서 max_lines 안에 들어가는 글꼴과 줄 목록.
+
+        전에는 8px 까지 줄이기만 해서, 제목이 길면 그래도 안 들어가 포스터
+        밖으로 삐져나가 잘렸다. 지금은 조금 줄여 한 줄에 들어가면 한 줄로 두고
+        (짧은 글의 모양이 전과 같게), 그래도 넘치면 줄을 나눠 담는다."""
+        one = max(10, int(size * .72))     # 한 줄로 담으려고 줄일 수 있는 한계
+        s = size
+        while s >= one:
+            f, path = load(path, s)
+            if len(wrap(txt, f)) <= 1:
+                return f, [txt]
+            s = int(s * .96)
+        floor = max(10, int(size * .5))
+        s = size
+        while True:
+            f, path = load(path, s)
+            ls = wrap(txt, f)
+            if len(ls) <= max_lines or s <= floor:
+                return f, ls[:max_lines]
+            s = int(s * .92)
+
+    def block(ls, f, top, fill):
+        """가운데 정렬로 줄을 쌓고, 다음 줄이 시작될 y 를 돌려준다."""
+        y = top
+        for ln in ls:
+            bb = d.textbbox((0, 0), ln, font=f)
+            d.text(((w - (bb[2] - bb[0])) / 2 - bb[0], y), ln, font=f, fill=fill)
+            y += int(f.size * 1.22)
+        return y
 
     l1, l2, l3 = (list(lines) + ["", "", ""])[:3]
-    if l1:
-        mid(l1, fit(fb, l1, int(h * .095)), int(h * .30), ic)
-    if l2:
-        mid(l2, fit(fb, l2, int(h * .135)), int(h * .44), ac)
-    d.line([int(w * .22), int(h * .63), int(w * .78), int(h * .63)],
+    f1, ls1 = fit(fb, l1, int(h * .095), 2) if l1 else (None, [])
+    f2, ls2 = fit(fb, l2, int(h * .135), 2) if l2 else (None, [])
+    h1 = len(ls1) * int(f1.size * 1.22) if ls1 else 0
+    h2 = len(ls2) * int(f2.size * 1.22) if ls2 else 0
+    gap = int(h * .05) if (ls1 and ls2) else 0
+    # 위 블록(제목·날짜)은 0.28h~0.61h 안에서 세로 가운데에 놓는다.
+    top = int(h * .28) + max(0, (int(h * .33) - (h1 + gap + h2)) // 2)
+    if ls1:
+        top = block(ls1, f1, top, ic) + gap
+    if ls2:
+        top = block(ls2, f2, top, ac)
+    # 줄이 늘어나면 글자가 구분선을 뚫고 나간다. 선을 글자 아래로 밀어 둔다.
+    div = max(int(h * .63), top + int(h * .025))
+    d.line([int(w * .22), div, int(w * .78), div],
            fill=(218, 212, 200), width=max(2, h // 260))
     if l3:
-        mid(l3, fit(fr, l3, int(h * .065)), int(h * .69), ic)
+        f3, ls3 = fit(fr, l3, int(h * .065), 2)
+        h3 = len(ls3) * int(f3.size * 1.22)
+        room = h - int(h * .06) - (div + int(h * .03))
+        block(ls3, f3, div + int(h * .03) + max(0, (room - h3) // 2), ic)
     return im
 
 

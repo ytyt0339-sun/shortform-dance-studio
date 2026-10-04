@@ -39,8 +39,24 @@ header .spend{margin-left:auto;font-family:var(--mono);font-size:12.5px;color:va
 .bar button.x{padding:6px 10px 6px 4px;color:var(--muted);font-size:14px;line-height:1}
 .bar button.x:hover{color:var(--err)}
 
+/* 단계가 여덟이라 지금 어디인지 안 보인다는 말이 있어 위에 띠를 뒀다.
+   화면을 내려도 따라오고, 지나온 단계를 누르면 그 칸으로 간다. */
+.steps{position:sticky;top:0;z-index:20;display:flex;gap:6px;overflow-x:auto;
+  background:var(--ground);padding:10px 0 12px;margin-bottom:8px;scrollbar-width:none}
+.steps::-webkit-scrollbar{display:none}
+.stp{flex:none;display:flex;align-items:center;gap:7px;font:inherit;font-size:12.5px;
+  color:var(--muted);background:var(--surface);border:1px solid var(--line);
+  border-radius:999px;padding:6px 13px 6px 7px;cursor:pointer;white-space:nowrap}
+.stp b{width:19px;height:19px;border-radius:7px;background:var(--line);color:var(--muted);
+  display:grid;place-items:center;font-family:var(--mono);font-size:10.5px;font-weight:400}
+.stp.done{color:var(--ink-2)}
+.stp.done b{background:var(--ok);color:#fff}
+.stp.cur{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.stp.cur b{background:var(--accent);color:#fff}
+.stp.off{opacity:.45;cursor:default}
+.stp:not(.off):hover{border-color:var(--accent)}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;
-  padding:22px;margin-bottom:14px}
+  padding:22px;margin-bottom:14px;scroll-margin-top:62px}
 .card.off{opacity:.5}
 .hd{display:flex;align-items:center;gap:10px;margin-bottom:4px}
 .n{width:23px;height:23px;border-radius:8px;background:var(--accent);color:#fff;flex:none;
@@ -154,6 +170,8 @@ table.subs .del:hover{color:var(--err)}
 
 <div class="bar" id="bar"></div>
 
+<nav class="steps" id="steps" aria-label="진행 단계"></nav>
+
 <!-- 1 캐릭터 -->
 <div class="card" id="c1">
   <div class="hd"><span class="n">1</span><h2>캐릭터</h2></div>
@@ -169,6 +187,10 @@ table.subs .del:hover{color:var(--err)}
   <p class="hint" id="styleNote"></p>
 
   <label class="lbl">캐릭터 그림</label>
+  <p class="hint"><b>서 있는 전신 그림</b>을 올려 주세요 — 머리끝부터 발끝까지 보이고,
+    팔다리가 가려지지 않은 그림이 가장 잘 나옵니다.
+    앉아 있거나 누워 있는 그림, 얼굴만 있는 그림은 춤 동작이 어색하게 나옵니다.
+    배경이 없는 그림(PNG)이면 더 깔끔합니다.</p>
   <input type="file" id="charFile" accept="image/png,image/jpeg,image/webp">
 
   <div id="charFixRow">
@@ -255,10 +277,8 @@ table.subs .del:hover{color:var(--err)}
       <label class="lbl">음악</label>
       <select id="musSrc">
         <option value="reference">춤 영상의 소리 그대로 (박자가 정확히 맞음)</option>
-        <option value="file">음악 파일 따로 올리기</option>
         <option value="none">소리 없음</option>
       </select>
-      <input type="file" id="musFile" accept="audio/*" style="display:none;margin-top:8px">
     </div>
   </div>
   <div class="prev" id="refPrev"></div>
@@ -485,7 +505,7 @@ table.subs .del:hover{color:var(--err)}
   <div class="row" style="margin-top:14px;align-items:center">
     <button class="btn big" id="renderGo">만들기</button>
     <label class="hint" style="margin:0;display:flex;align-items:center;gap:6px">
-      <input type="checkbox" id="wantEnd" checked> 엔딩 포스터 포함
+      <input type="checkbox" id="wantEnd" checked> 엔딩 포스터 포함<span id="endNote"></span>
     </label>
     <span class="hint" style="margin:0" id="quotaLine"></span>
   </div>
@@ -685,6 +705,37 @@ function step(id, state){
   c.classList.toggle('done', state === 'done');
 }
 
+// ── 단계 표시줄 ─────────────────────────────────────────────────────────
+// 칸이 여덟이라 지금 어디인지 모르겠다는 말이 있었다. 상태는 칸이 이미 들고
+// 있으므로(off / done) 따로 세지 않고 칸에서 읽어 칠하기만 한다.
+const STEPS = [['#c1','캐릭터'], ['#c2','배경'], ['#c3','키컷'], ['#c4','춤 영상'],
+               ['#c5','엔딩'], ['#c6s','자막'], ['#c6','만들기'], ['#c7','완성']];
+
+function buildSteps(){
+  $('#steps').innerHTML = STEPS.map(([id, label], i) =>
+    `<button class="stp" type="button" data-go="${id}"><b>${i+1}</b>${label}</button>`).join('');
+  $('#steps').onclick = e => {
+    const b = e.target.closest('[data-go]');
+    if (!b || b.classList.contains('off')) return;
+    $(b.dataset.go).scrollIntoView({behavior:'smooth', block:'start'});
+  };
+}
+
+function paintSteps(){
+  let cur = -1;
+  STEPS.forEach(([id], i) => {
+    const c = $(id);
+    if (cur < 0 && !c.classList.contains('off') && !c.classList.contains('done')) cur = i;
+  });
+  $('#steps').querySelectorAll('.stp').forEach((b, i) => {
+    const c = $(STEPS[i][0]);
+    b.className = 'stp'
+      + (c.classList.contains('done') ? ' done' : '')
+      + (c.classList.contains('off') ? ' off' : '')
+      + (i === cur ? ' cur' : '');
+  });
+}
+
 // 자막의 진짜 값은 화면 입력칸이다. JOB 을 서버 응답으로 갈아끼우다
 // 편집분이 날아간 적이 있어서, 저장할 때는 항상 화면에서 다시 읽는다.
 function collectSubs(){
@@ -819,20 +870,21 @@ function render(){
 
   step('#c4', j.keycut_approved ? (j.plate ? 'done' : '') : 'off');
   let rp = '';
-  if (j.plate) rp += `<video class="shot" src="${withSid(`/api/${j.id}/file/${j.plate}`)}" controls muted></video>`;
+  // 파일 이름이 늘 plate.mp4 라서 주소가 같으면 브라우저가 먼저 받아둔 영상을
+  // 다시 보여준다. 다른 영상을 올렸는데 점수만 바뀌는 일이 있었다.
+  if (j.plate) rp += `<video class="shot" src="${withSid(`/api/${j.id}/file/${j.plate}?v=${j.plate_at || 0}`)}" controls muted></video>`;
   if (j.clip_score){
     const s = j.clip_score, c = j.score_check;
     const lv = c ? c.level : 'ok';
     rp += `<div><span class="tag ${lv==='ok'?'ok':(lv==='warn'?'':'no')}">적합도 ${s.score}점</span>
       <p class="hint">${j.segments} 컷 · ${Math.round((j.segments*6))}초 분량</p></div>`;
   }
-  const src = j.music_src || 'reference';
+  // 음악 파일 따로 올리기는 없앴다. 예전 작업에 'file' 이 남아 있으면
+  // 춤 영상 소리로 돌려놓는다 (고를 수 없는 값이 선택돼 보이면 안 된다).
+  const src = (j.music_src === 'none') ? 'none' : 'reference';
   $('#musSrc').value = src;
-  $('#musFile').style.display = src === 'file' ? '' : 'none';
   let mtag = '';
   if (src === 'none') mtag = '<span class="tag">소리 없음</span>';
-  else if (src === 'file') mtag = j.music ? '<span class="tag ok">음악 파일 등록됨</span>'
-                                          : '<span class="tag no">음악 파일을 올려주세요</span>';
   else mtag = j.ref_audio ? '<span class="tag ok">춤 영상 소리 사용</span>'
                           : '<span class="tag no">이 영상에는 소리가 없습니다</span>';
   if (j.plate) rp += `<div>${mtag}</div>`;
@@ -887,6 +939,13 @@ function render(){
       <p class="hint">완성된 엔딩</p></div>`;
   $('#endPrev').innerHTML = ehtml;
 
+  // 엔딩 장면을 만들지 않았으면 엔딩은 붙지 않는다. 체크해 둔 채로 두면
+  // 넣은 줄 알고 기다리게 되므로, 아예 못 켜게 하고 이유를 적어 둔다.
+  const canEnd = !!(j.ending || j.ending_still);
+  $('#wantEnd').disabled = !canEnd;
+  if (!canEnd) $('#wantEnd').checked = false;
+  $('#endNote').textContent = canEnd ? '' : ' — 5번에서 엔딩 장면을 먼저 만들어 주세요';
+
   step('#c6s', (j.ref_audio || j.music) ? ((j.subs||[]).length ? 'done' : '') : 'off');
   $('#subsOn').checked = j.subs_on !== false;
   if (FONTS){
@@ -917,6 +976,7 @@ function render(){
   $('#scoreWarn2').innerHTML = warnHTML(j.score_check);
   if (j.plate) { estimate(); loadQuota(); }
   $('#renderNote').style.display = j.result ? '' : 'none';
+  paintSteps();          // 칸 상태를 다 칠한 뒤에 읽어야 맞는다
 }
 
 async function estimate(){
@@ -1017,14 +1077,6 @@ $('#mode').onchange = async () => {
         body:form({one_shot: $('#mode').value === 'one' ? 'true' : 'false'})});
   if (keep.length) JOB.subs = keep;
   render(); estimate();
-};
-
-$('#musFile').onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
-  try {
-    JOB = await api(`/api/${JOB.id}/music`, {method:'POST', body:form({file:f})});
-    render(); say('#refMsg', '음악을 등록했습니다.', 'ok');
-  } catch(err){ say('#refMsg', err.message, 'err'); }
 };
 
 async function saveEndOptions(){
@@ -1348,6 +1400,7 @@ $('#pFontBtn').onclick = e => {
     $('#ver').textContent = '화면 ' + t.toTimeString().slice(0,5) + ' 판';
   } catch(e){}
   await loadFonts();
+  buildSteps();
   render(); await loadBar();
   // 새로고침해도 돌고 있는 작업을 이어서 보여준다
   const t = await api(`/api/${JOB.id}/task`).catch(() => ({state:'idle'}));
