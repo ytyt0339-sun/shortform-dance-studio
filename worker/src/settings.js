@@ -7,7 +7,7 @@
 // 값을 늘릴 때는 파이썬 쪽(pipeline.py)과 **양쪽 다** 고쳐야 한다.
 export const CAMERAS = ["none", "push", "sway", "sway_strong", "orbit", "punch", "handheld"];
 export const SUB_STYLES = ["soft", "bold", "serif"];
-export const STYLE_MODES = ["3d", "doodle"];
+export const STYLE_MODES = ["3d", "doodle", "real"];
 export const POSTER_KINDS = ["wall", "board", "banner", "frame"];
 export const ENDING_POSES = ["point", "wave", "open", "look"];
 

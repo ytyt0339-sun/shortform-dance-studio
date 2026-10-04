@@ -126,6 +126,62 @@ def clean_character(d, j, feedback="", say=_quiet):
     pl.clean_sketch(str(src), str(out), feedback=feedback)
     j["char_feedback"] = (feedback or "").strip()
     j["character"] = out.name
+    j["character_stood"] = False      # 다듬기는 자세를 바꾸지 않는다
+    j["character_n"] = j.get("character_n", 0) + 1
+    j["keycut"] = None
+    j["keycut_approved"] = False
+    j["spent"] = round(j.get("spent", 0) + pl.NB_PRICE, 3)
+    return j
+
+
+def make_character(d, j, prompt="", use_photo=True, say=_quiet):
+    """캐릭터를 새로 만든다. 그릴 줄 몰라도 시작할 수 있게 하는 길이다.
+
+    사람 사진(person_photo)을 올려 두었으면 그 특징을 옮겨 담고, 없으면 글만 쓴다.
+    만든 그림이 곧 원본이 되므로, 다듬기·세우기는 이 그림에서 다시 출발한다.
+    """
+    d = Path(d)
+    n = j.get("character_n", 0) + 1
+    out = d / ("character_made%d.png" % n)
+    # 글로 만들기를 고른 경우, 전에 올려 둔 사진이 남아 있어도 쓰지 않는다.
+    photo = (d / j["person_photo"]) if (use_photo and j.get("person_photo")) else None
+
+    say(msg="사람 사진으로 캐릭터 만드는 중" if photo else "캐릭터 만드는 중")
+    pl.make_character(str(out), prompt=prompt, person_photo=(str(photo) if photo else None),
+                      style_mode=j.get("style_mode", "3d"))
+    j["character"] = out.name
+    j["char_prompt"] = (prompt or "").strip()
+    # 만든 그림이 원본이다. 앞서 올린 그림의 흔적은 지운다.
+    j["character_raw"] = None
+    j["character_stood"] = False
+    j["character_n"] = n
+    j["keycut"] = None
+    j["keycut_approved"] = False
+    j["spent"] = round(j.get("spent", 0) + pl.NB_PRICE, 3)
+    return j
+
+
+def stand_character(d, j, feedback="", say=_quiet):
+    """캐릭터를 서 있는 전신으로 다시 세운다. 선택 단계다.
+
+    앉아 있거나 얼굴만 나온 그림을 그대로 춤 모델에 넣으면 동작이 어색하다.
+    다듬기와 같이 원본에서 출발해, 여러 번 눌러도 그림이 뭉개지지 않는다.
+    """
+    d = Path(d)
+    src = d / (j.get("character_raw") or j["character"])
+    if not j.get("character_raw"):
+        raw = d / ("raw" + src.suffix)
+        raw.write_bytes(src.read_bytes())
+        j["character_raw"] = raw.name
+        src = raw
+
+    say(msg="서 있는 전신으로 세우는 중")
+    out = d / "character_stand.png"
+    pl.stand_character(str(src), str(out),
+                       style_mode=j.get("style_mode", "3d"), feedback=feedback)
+    j["char_feedback"] = (feedback or "").strip()
+    j["character"] = out.name
+    j["character_stood"] = True
     j["character_n"] = j.get("character_n", 0) + 1
     j["keycut"] = None
     j["keycut_approved"] = False

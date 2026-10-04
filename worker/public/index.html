@@ -116,6 +116,14 @@ input[type=color]{width:100%;height:42px;padding:3px;border:1px solid var(--line
 .msg.err{background:var(--err-bg);border-color:#F6C9CE;color:#9B2C36}
 
 /* 같은 캐릭터를 두 화풍으로 그려 둔 예시. 고르기 전에 결과를 먼저 본다. */
+/* 시작 방법 고르기. 셋을 한꺼번에 펼쳐 두니 읽을 게 너무 많아, 고른 것만 보인다. */
+.ways{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 0}
+.ways button{font:inherit;font-size:13px;padding:9px 16px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink-2)}
+.ways button:hover{border-color:var(--accent)}
+.ways button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.way{display:none;margin-top:14px}
+.way.on{display:block}
 .samples{display:flex;gap:10px;margin:10px 0 0}
 .samples figure{margin:0;flex:1;max-width:150px}
 .samples img{width:100%;border:1px solid var(--line);border-radius:10px;display:block}
@@ -180,32 +188,62 @@ table.subs .del:hover{color:var(--err)}
       <figcaption>3D 피규어</figcaption></figure>
     <figure><img src="/sample/style_doodle.jpg" alt="손그림 낙서체로 그려진 같은 사자 캐릭터">
       <figcaption>손그림 낙서체</figcaption></figure>
+    <figure><img src="/sample/style_real.jpg" alt="실제 봉제 인형처럼 사진으로 찍힌 같은 사자 캐릭터">
+      <figcaption>실사</figcaption></figure>
   </div>
 
   <label class="lbl">화풍</label>
   <select id="styleMode"></select>
   <p class="hint" id="styleNote"></p>
 
-  <label class="lbl">캐릭터 그림</label>
-  <p class="hint"><b>서 있는 전신 그림</b>을 올려 주세요 — 머리끝부터 발끝까지 보이고,
-    팔다리가 가려지지 않은 그림이 가장 잘 나옵니다.
-    앉아 있거나 누워 있는 그림, 얼굴만 있는 그림은 춤 동작이 어색하게 나옵니다.
-    배경이 없는 그림(PNG)이면 더 깔끔합니다.</p>
-  <input type="file" id="charFile" accept="image/png,image/jpeg,image/webp">
+  <div class="hr"></div>
+  <label class="lbl">캐릭터를 어떻게 준비할까요</label>
+  <div class="ways" id="charWays">
+    <button type="button" data-way="up" class="on">그림 올리기</button>
+    <button type="button" data-way="text">글로 만들기</button>
+    <button type="button" data-way="photo">사람 사진으로 만들기</button>
+  </div>
 
-  <div id="charFixRow">
-    <label class="lbl" for="charFix">고칠 점 <span class="opt">— 선택</span></label>
-    <input type="text" id="charFix" placeholder="예: 팔을 몸에서 더 떼어줘 · 얼굴을 더 크게 · 모자는 빼줘">
-    <p class="hint">적어두면 다듬을 때 이 내용을 먼저 반영합니다.
-      매번 <b>처음 올린 그림에서 새로 다듬으니</b> 여러 번 눌러도 그림이 망가지지 않습니다.</p>
+  <div class="way on" id="wayUp">
+    <input type="file" id="charFile" accept="image/png,image/jpeg,image/webp">
+    <p class="hint"><b>서 있는 전신 그림</b>이 가장 잘 나옵니다. 앉아 있거나 얼굴만 있어도
+      아래 <b>전신으로 세우기</b>로 고칠 수 있습니다.</p>
   </div>
-  <div class="row" style="margin-top:12px">
-    <button class="btn sec" id="charClean">그림 다듬기</button>
-    <span class="hint" style="margin:0" id="charCleanNote">낙서나 스케치를 올렸다면 눌러주세요.
-      원본의 느낌은 두고 <b>팔다리만 또렷하게</b> 정리합니다 — 그래야 동작이 안 뭉개집니다.</span>
+
+  <div class="way" id="wayText">
+    <textarea id="charPrompt" rows="2"
+      placeholder="예: 파란 갈기의 둥글둥글한 사자, 남색 티셔츠"></textarea>
+    <p class="hint">생김새·색·입은 옷을 적을수록 비슷하게 나옵니다.</p>
   </div>
+
+  <div class="way" id="wayPhoto">
+    <input type="file" id="personPhoto" accept="image/png,image/jpeg,image/webp">
+    <p class="hint">머리 모양과 색, 안경, 수염, 옷의 색을 캐릭터로 옮깁니다.
+      얼굴을 사진처럼 그리지는 않습니다.</p>
+    <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <img id="personPhotoImg" style="display:none;height:84px;border:1px solid var(--line);border-radius:8px" alt="">
+      <button class="btn sec sm" id="personPhotoClear" style="display:none">사진 빼기</button>
+    </div>
+  </div>
+
+  <div class="row" id="charMakeRow" style="margin-top:12px;display:none">
+    <button class="btn" id="charMake">캐릭터 만들기</button>
+    <span class="hint" style="margin:0">30초쯤 · 마음에 들 때까지 다시 눌러도 됩니다</span>
+  </div>
+
   <div class="prev" id="charPrev"></div>
   <div class="msg" id="charMsg"></div>
+
+  <div id="charTools" style="display:none">
+    <div class="hr"></div>
+    <label class="lbl">그림 손보기 <span class="opt">— 선택</span></label>
+    <input type="text" id="charFix" placeholder="고칠 점 — 예: 팔을 몸에서 더 떼어줘 · 모자는 빼줘">
+    <div class="row" style="margin-top:10px">
+      <button class="btn sec" id="charStand">전신으로 세우기</button>
+      <button class="btn sec" id="charClean">그림 다듬기</button>
+      <span class="hint" style="margin:0" id="charToolNote"></span>
+    </div>
+  </div>
 </div>
 
 <!-- 2 배경 + 키컷 -->
@@ -219,11 +257,12 @@ table.subs .del:hover{color:var(--err)}
       <textarea id="bgPrompt" placeholder="햇빛 드는 대학교 캠퍼스 광장, 붉은 벽돌 건물과 나무"></textarea>
     </div>
     <div style="flex:1.2;min-width:200px">
-      <label class="lbl">장소 사진 <span class="opt">— 선택</span></label>
+      <label class="lbl">참고 사진 <span class="opt">— 선택</span></label>
       <input type="file" id="bgPhoto" accept="image/png,image/jpeg,image/webp">
-      <p class="hint">사진을 올리면 <b>그 장소를 그대로 옮겨 그립니다.</b>
-        실제 캠퍼스나 건물이면 글로 쓰는 것보다 훨씬 정확합니다.
-        사진 속 사람과 글자는 빼고 그립니다.</p>
+      <p class="hint"><b>장소 사진</b>이면 그 장소를 그대로 옮겨 그립니다 — 실제 캠퍼스나
+        건물이면 글로 쓰는 것보다 훨씬 정확합니다.
+        <b>장소가 아닌 사진</b>(물건·무늬·천·그림·분위기 사진)이면 그 색과 재질, 분위기를
+        가져와 어울리는 배경을 만듭니다. 사진 속 사람과 글자는 빼고 그립니다.</p>
       <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <img id="bgPhotoImg" style="display:none;height:84px;border:1px solid var(--line);border-radius:8px" alt="">
         <button class="btn sec sm" id="bgPhotoClear" style="display:none">사진 빼기</button>
@@ -833,7 +872,10 @@ function render(){
   if (j.character)
     chtml += `<div><img class="shot" style="width:${j.character_raw ? 150 : 210}px"
       src="${withSid(`/api/${j.id}/file/${j.character}?v=${j.character_n}_${j.keycut_n}`)}">
-      <p class="hint">${j.character_raw ? '다듬은 캐릭터 — 이걸로 만듭니다' : '올리신 그림'}</p></div>`;
+      <p class="hint">${j.character_raw
+        ? (j.character_stood ? '전신으로 세운 캐릭터 — 이걸로 만듭니다'
+                             : '다듬은 캐릭터 — 이걸로 만듭니다')
+        : '올리신 그림'}</p></div>`;
   $('#charPrev').innerHTML = chtml;
   if (FONTS && FONTS.style_modes){
     $('#styleMode').value = j.style_mode || '3d';
@@ -841,10 +883,20 @@ function render(){
     $('#styleNote').textContent = m ? m.note : '';
   }
   const doodle = (j.style_mode || '3d') === 'doodle';
-  $('#charFixRow').style.display = doodle ? '' : 'none';
+  // 손보기 도구는 그림이 생긴 뒤에만 보인다. 다듬기는 낙서체일 때만 쓴다.
+  $('#charTools').style.display = j.character ? '' : 'none';
   $('#charClean').style.display = doodle ? '' : 'none';
-  $('#charCleanNote').style.display = doodle ? '' : 'none';
-  $('#charClean').disabled = !j.character;
+  $('#charToolNote').textContent = doodle
+    ? '앉아 있거나 얼굴만 있으면 세우기 · 낙서라면 다듬기'
+    : '앉아 있거나 얼굴만 있는 그림이면 눌러주세요';
+  if (j.char_prompt && !$('#charPrompt').value) $('#charPrompt').value = j.char_prompt;
+  const pp = $('#personPhotoImg');
+  if (j.person_photo){
+    pp.src = withSid(`/api/${j.id}/file/${j.person_photo}?v=${j.character_n}`);
+    pp.style.display = ''; $('#personPhotoClear').style.display = '';
+  } else {
+    pp.style.display = 'none'; $('#personPhotoClear').style.display = 'none';
+  }
   step('#c1', j.character ? 'done' : '');
 
   step('#c2', j.character ? (j.keycut ? 'done' : '') : 'off');
@@ -1011,6 +1063,50 @@ $('#styleMode').onchange = async () => {
 $('#charClean').onclick = () => runTask(
   () => api(`/api/${JOB.id}/character/cleanup`,
     {method:'POST', body:form({feedback:$('#charFix').value})}), '#charMsg', '그림 다듬기');
+
+$('#charStand').onclick = () => runTask(
+  () => api(`/api/${JOB.id}/character/stand`,
+    {method:'POST', body:form({feedback:$('#charFix').value})}), '#charMsg', '전신으로 세우기');
+
+// 시작 방법 고르기. 고른 칸만 보여 주고, 만들기 버튼은 만드는 쪽일 때만 띄운다.
+let CHAR_WAY = 'up';
+function pickWay(way){
+  CHAR_WAY = way;
+  $('#charWays').querySelectorAll('[data-way]').forEach(
+    b => b.classList.toggle('on', b.dataset.way === way));
+  [['up','#wayUp'], ['text','#wayText'], ['photo','#wayPhoto']].forEach(
+    ([k, id]) => $(id).classList.toggle('on', k === way));
+  $('#charMakeRow').style.display = way === 'up' ? 'none' : '';
+}
+$('#charWays').onclick = e => {
+  const b = e.target.closest('[data-way]');
+  if (b) pickWay(b.dataset.way);
+};
+
+$('#personPhoto').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    JOB = await api(`/api/${JOB.id}/person_photo`, {method:'POST', body:form({file:f})});
+    render(); say('#charMsg', '사진을 올렸습니다. 캐릭터 만들기를 눌러주세요.', 'ok');
+  } catch(err){ say('#charMsg', err.message, 'err'); }
+};
+
+$('#personPhotoClear').onclick = async () => {
+  JOB = await api(`/api/${JOB.id}/person_photo`, {method:'POST', body:form({clear:'true'})});
+  $('#personPhoto').value = '';
+  render(); say('#charMsg', '사람 사진을 뺐습니다.', 'ok');
+};
+
+$('#charMake').onclick = () => {
+  if (CHAR_WAY === 'photo' && !JOB.person_photo)
+    return say('#charMsg', '사람 사진을 먼저 올려주세요.', 'err');
+  if (CHAR_WAY === 'text' && !$('#charPrompt').value.trim())
+    return say('#charMsg', '어떤 캐릭터인지 적어주세요.', 'err');
+  return runTask(() => api(`/api/${JOB.id}/character/make`,
+    {method:'POST', body:form({prompt:$('#charPrompt').value,
+                               use_photo: CHAR_WAY === 'photo' ? 'true' : 'false'})}),
+    '#charMsg', '캐릭터 만들기');
+};
 
 $('#bgPhoto').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;

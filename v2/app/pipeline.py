@@ -32,6 +32,7 @@ import video as vd
 
 CUT_SEC = 6                     # 4)
 NB_EDIT = "fal-ai/nano-banana-2/edit"
+NB_MAKE = "fal-ai/nano-banana-2"      # 넣을 그림이 없을 때 (글만으로 만들기)
 NB_PRICE = 0.08
 POSTER_VID_PRICE = 0.54
 
@@ -115,11 +116,27 @@ DOODLE_LIGHT = (
     "wobbly shapes, flat colors, a loosely scribbled ground line under the feet and a small "
     "hand-drawn shadow. No photographic texture, no realistic lighting, no depth of field. ")
 
+REAL_STYLE = (
+    "Render the character as a REAL physical thing captured by a camera: a life-size mascot "
+    "costume or plush made of actual fabric, with visible fibres, stitched seams, slight "
+    "sagging where the material folds and tiny natural imperfections. Keep its identity - "
+    "shape, colors, face, markings and worn accessories - exactly as in the reference image. "
+    "True-to-life materials and micro-texture. Not an illustration, not cartoon shading, not "
+    "a glossy CG render - it must read as a photograph of something that physically exists. ")
+
+REAL_LIGHT = (
+    "Photograph it on location in real daylight: natural exposure and white balance, a soft "
+    "contact shadow on the ground under its feet, shallow depth of field with the background "
+    "gently blurred, and fine photographic grain. It should look like a frame shot on a "
+    "full-frame camera, not a render. ")
+
 STYLE_MODES = {
     "3d": dict(label="3D 피규어", style=None, light=None,
                note="말랑한 장난감 질감 + 사진 같은 배경"),
     "doodle": dict(label="손그림 낙서체", style=DOODLE_STYLE, light=DOODLE_LIGHT,
                    note="크레파스 낙서 느낌 + 종이 위에 그린 배경"),
+    "real": dict(label="실사", style=REAL_STYLE, light=REAL_LIGHT,
+                 note="진짜 탈인형 같은 천 질감 + 실제로 찍은 듯한 배경"),
 }
 
 
@@ -140,6 +157,74 @@ SKETCH_CLEAN = (
     "distinct and separated, arms held away from the body in a relaxed A-pose, feet flat. "
     "Full body from head to feet, centered, generous empty margin on all sides. "
     "No text, no background, no other characters. ")
+
+
+# 앉아 있거나 얼굴만 있는 그림은 춤 동작이 어색하게 나온다. 춤 모델에 넣기
+# 전에 같은 캐릭터를 서 있는 전신으로 다시 세워 둔다.
+STAND_POSE = (
+    "Redraw the SAME character from the reference image standing upright, seen from the front, "
+    "full body from the top of the head to the soles of both feet, on a plain light background. "
+    "Keep its identity EXACTLY: the same shapes, colours, face, markings, clothing and worn "
+    "accessories. Do not restyle it, do not change its proportions, do not turn it into a "
+    "different character. "
+    "If the reference shows it sitting, lying down, crouching, cropped or only from the chest up, "
+    "reconstruct the missing parts so they match what is visible, and stand it up. "
+    "IMPORTANT: head, torso, two arms and two legs must each be distinct and separated - arms "
+    "held away from the body in a relaxed A-pose, legs slightly apart, both feet flat on the "
+    "ground, nothing crossed, nothing hidden behind the body and no props held in the hands. "
+    "The whole figure is centred with a generous empty margin on every side, and no part of it "
+    "touches or runs past the edge of the frame. "
+    "No text, no furniture, no other characters, no busy background. ")
+
+
+# 캐릭터가 아예 없는 사람을 위한 길. 글로 적거나 사람 사진을 주면 만들어 준다.
+CHAR_BODY = (
+    "Full body from the top of the head to the soles of both feet, standing upright and facing "
+    "the camera in a relaxed A-pose: arms held away from the body, legs slightly apart, both "
+    "feet flat on the ground, nothing held in the hands. Head, torso, both arms and both legs "
+    "must each be distinct and easy to tell apart. One character only, centred on a plain light "
+    "background with a generous empty margin on every side, no part touching the frame edge. "
+    "No text, no furniture, no scenery, no other characters. ")
+
+CHAR_FROM_TEXT = (
+    "Design an original friendly mascot character from this description: %s. ")
+
+CHAR_FROM_PHOTO = (
+    "The reference image is a photograph of a real person. Design an original mascot character "
+    "inspired by THAT person. Carry over what makes them recognisable at a glance - hair colour "
+    "and hairstyle, skin tone, glasses, facial hair, and the colours and shapes of the clothes "
+    "they are wearing - and simplify the rest into a friendly character. "
+    "Do not reproduce the face photographically and do not copy anything from the photo's "
+    "background. The result is a stylised character, not a portrait. ")
+
+
+def make_character(out_path, prompt="", person_photo=None, style_mode="3d"):
+    """캐릭터를 새로 만든다. 사람 사진을 주면 그 특징을 옮겨 담는다."""
+    tmp = tempfile.mkdtemp()
+    try:
+        st, _ = mode_of(style_mode)
+        want = (prompt or "").strip().rstrip(".")
+        if person_photo:
+            body = CHAR_FROM_PHOTO
+            if want:
+                body += "Also follow this request: %s. " % want
+            imgs = [person_photo]
+        else:
+            body = CHAR_FROM_TEXT % (want or "a cheerful animal mascot")
+            imgs = []
+        return _nb(body + CHAR_BODY + st, imgs, out_path, tmp)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def stand_character(char_path, out_path, style_mode="3d", feedback=None):
+    """캐릭터를 서 있는 전신 한 장으로 다시 세운다. 원본은 건드리지 않는다."""
+    tmp = tempfile.mkdtemp()
+    try:
+        st, _ = mode_of(style_mode)
+        return _nb(STAND_POSE + st + fix_note(feedback), [char_path], out_path, tmp)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def fix_note(feedback):
@@ -197,13 +282,15 @@ def _ascii_copy(src, tmp, name):
 
 
 def _nb(prompt, images, out_path, tmp):
+    """넣을 그림이 있으면 고치는 모델로, 없으면 글만으로 만드는 모델로 간다."""
     fal = _fal()
-    urls = [fal.upload_file(_ascii_copy(p, tmp, "in%d%s" % (i, Path(p).suffix)))
-            for i, p in enumerate(images)]
-    r = retry(lambda: fal.subscribe(NB_EDIT, arguments={
-        "prompt": prompt, "image_urls": urls,
-        "aspect_ratio": "9:16", "resolution": "2K", "output_format": "png",
-    }, with_logs=False))
+    args = {"prompt": prompt, "aspect_ratio": "9:16",
+            "resolution": "2K", "output_format": "png"}
+    if images:
+        args["image_urls"] = [fal.upload_file(_ascii_copy(p, tmp, "in%d%s" % (i, Path(p).suffix)))
+                              for i, p in enumerate(images)]
+    r = retry(lambda: fal.subscribe(NB_EDIT if images else NB_MAKE,
+                                    arguments=args, with_logs=False))
     urllib.request.urlretrieve(r["images"][0]["url"], out_path)
     return out_path
 
@@ -284,10 +371,18 @@ BG_KEEP = (
     "place at the same moment. Only the framing changes to make room for the sign. ")
 
 PLACE_REF = (
-    "The SECOND reference image is a photograph of a real place. Recreate THAT location as the "
-    "setting: keep its recognizable layout, buildings, landmarks, materials, colors and time of "
-    "day, seen from a similar viewpoint. Do not copy any people, text or signage from the photo. "
-    "Render the place in the same 3D animation film style as the character, not as a photograph. ")
+    "The SECOND reference image is a photo the user chose for the setting. First look at it and "
+    "decide what it actually shows. "
+    "IF IT IS A REAL PLACE - a campus, a street, a room, a stage, a landscape - recreate THAT "
+    "location as the setting: keep its recognizable layout, buildings, landmarks, materials, "
+    "colors and time of day, seen from a similar viewpoint. "
+    "IF IT IS NOT A PLACE - an object, a pattern, a texture, a fabric, an artwork, a poster, a "
+    "close-up, a single item or just a mood shot - do NOT try to read it as a location and do "
+    "NOT paste it in flat. Instead build a believable setting that is clearly inspired by it: "
+    "carry over its colors, materials, textures, motifs, mood and lighting, and invent "
+    "surroundings that would plausibly hold that thing. "
+    "In both cases: do not copy any people, text or signage from the photo, and render the "
+    "setting in the same style as the character, not as a raw photograph. ")
 
 
 def keycut(char_path, bg_prompt, out_path, pose=None, place_photo=None, style_mode="3d",

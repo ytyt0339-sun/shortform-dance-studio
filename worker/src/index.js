@@ -224,7 +224,7 @@ async function route(request, env, ctx, who, ip) {
   if (seg[2] === "upload" && method === "POST" && seg[3] === "start") {
     const kind = url.searchParams.get("kind") || "reference";
     const ext = (url.searchParams.get("ext") || ".mp4").toLowerCase();
-    if (!["character", "reference", "bg_photo", "music"].includes(kind)) {
+    if (!["character", "reference", "bg_photo", "music", "person_photo"].includes(kind)) {
       return oops("올릴 수 없는 종류입니다.");
     }
     const name = kind + ext;
@@ -265,7 +265,7 @@ async function route(request, env, ctx, who, ip) {
   // 배경·엔딩 사진은 "지우기"도 같은 자리로 온다 (화면이 clear=true 를 보낸다).
   if (method === "POST" && (rest === "character" || rest === "reference" ||
                             rest === "bg_photo" || rest === "music" ||
-                            rest === "ending/photo")) {
+                            rest === "person_photo" || rest === "ending/photo")) {
     const field = rest === "ending/photo" ? "ending_photo" : rest;
     const form = await request.formData();
     const file = form.get("file");
@@ -281,6 +281,14 @@ async function route(request, env, ctx, who, ip) {
       httpMetadata: { contentType: file.type || "application/octet-stream" },
     });
     job[field] = name;
+    if (rest === "character") {
+      // 새 그림을 올렸으면 앞 그림의 흔적을 지운다. 안 지우면 다듬기·세우기가
+      // 예전 원본(character_raw)에서 다시 그려서, 방금 올린 그림이 무시된다.
+      job.character_raw = null;
+      job.character_stood = false;
+      job.keycut = null;
+      job.keycut_approved = false;
+    }
     await writeJob(env, jid, job);
 
     if (rest === "reference") {
@@ -298,6 +306,14 @@ async function route(request, env, ctx, who, ip) {
     if (rest === "character/cleanup") {
       return runOp(env, jid, "그림 다듬기", "clean_character",
                    { feedback: s("feedback") });
+    }
+    if (rest === "character/stand") {
+      return runOp(env, jid, "전신으로 세우기", "stand_character",
+                   { feedback: s("feedback") });
+    }
+    if (rest === "character/make") {
+      return runOp(env, jid, "캐릭터 만들기", "make_character",
+                   { prompt: s("prompt"), use_photo: s("use_photo", "true") === "true" });
     }
     if (rest === "keycut") {
       return runOp(env, jid, "키컷 만들기", "make_keycut",
