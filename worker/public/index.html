@@ -54,6 +54,8 @@ header .spend{margin-left:auto;font-family:var(--mono);font-size:12.5px;color:va
 .stp.cur{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 .stp.cur b{background:var(--accent);color:#fff}
 .stp.off{opacity:.45;cursor:default}
+/* 건너뛸 수 있는 칸. 못 가는 칸(off)과 달리 누를 수는 있다. */
+.stp.opt b{background:transparent;border:1px dashed var(--line-2,var(--line))}
 .stp:not(.off):hover{border-color:var(--accent)}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;
   padding:22px;margin-bottom:14px;scroll-margin-top:62px}
@@ -97,6 +99,10 @@ input[type=color]{width:100%;height:42px;padding:3px;border:1px solid var(--line
   letter-spacing:0;margin-bottom:1px}
 .fontlist .it .sp{font-size:17px;line-height:1.35;color:var(--ink);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 서버가 그려 보낸 견본. 한 장에 쌓여 있어 줄 번호만큼 밀어서 보여준다. */
+.sp.img{height:46px;width:100%;max-width:440px;background-image:url(/api/fontsheet);
+  background-repeat:no-repeat;background-color:#fff;border-radius:6px}
+.fontbtn .sp.img{flex:1;min-width:0;margin-right:8px}
 .row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
 
 .btn{font:inherit;font-weight:600;font-size:13.5px;border:0;background:var(--accent);color:#fff;
@@ -240,7 +246,7 @@ table.subs .del:hover{color:var(--err)}
     <input type="text" id="charFix" placeholder="고칠 점 — 예: 팔을 몸에서 더 떼어줘 · 모자는 빼줘">
     <div class="row" style="margin-top:10px">
       <button class="btn sec" id="charStand">전신으로 세우기</button>
-      <button class="btn sec" id="charClean">그림 다듬기</button>
+      <button class="btn sec" id="charClean">화풍으로 다시 그리기</button>
       <span class="hint" style="margin:0" id="charToolNote"></span>
     </div>
   </div>
@@ -269,6 +275,19 @@ table.subs .del:hover{color:var(--err)}
       </div>
     </div>
   </div>
+  <label class="lbl" for="keySize" style="margin-top:14px">화면에서 캐릭터 크기</label>
+  <select id="keySize">
+    <option value="xs">아주 작게 — 배경이 주인공</option>
+    <option value="small">작게</option>
+    <option value="mid">보통 (권장)</option>
+    <option value="big">크게 — 캐릭터가 꽉 참</option>
+  </select>
+  <p class="hint">크기는 <b>여기서만 바뀝니다.</b> 고칠 점에 "작게 해줘" 라고 적어도 안 먹습니다 —
+    크기는 글이 아니라 밑그림에 직접 박아 넣기 때문입니다.
+    갈기나 치마처럼 <b>옆으로 넓은 캐릭터</b>는 폭에 먼저 걸려서, 작게를 골라도
+    생각만큼 작아지지 않을 수 있습니다. 더 줄이면 Kling이 몸통을 못 찾아
+    생성 자체를 거부합니다.</p>
+
   <div class="row" style="margin-top:12px">
     <button class="btn" id="bgGo">키컷 만들기</button>
     <span class="hint" style="margin:0">30초쯤 걸립니다 · 설명이나 사진 중 하나만 있어도 됩니다</span>
@@ -293,7 +312,9 @@ table.subs .del:hover{color:var(--err)}
       <input type="text" id="keyFixBg" placeholder="예: 밤 말고 낮으로 · 사람들은 빼줘 · 건물을 더 멀리">
     </div>
   </div>
-  <p class="hint">비워두면 같은 조건으로 다시 뽑습니다. 적으면 그 부분을 고쳐서 그립니다.</p>
+  <p class="hint">비워두면 같은 조건으로 다시 뽑습니다. 적으면 그 부분을 고쳐서 그립니다.
+    <b>크기는 여기서 못 바꿉니다</b> — 위 <b>2 배경</b>의 '화면에서 캐릭터 크기'를 바꾸고
+    다시 만들어 주세요.</p>
   <div class="row" style="margin-top:14px">
     <button class="btn ok" id="keyOk">이걸로 진행</button>
     <button class="btn sec" id="keyAgain">다시 만들기</button>
@@ -379,8 +400,10 @@ table.subs .del:hover{color:var(--err)}
   </div>
   <div class="row" style="align-items:flex-start">
     <div style="flex:2;min-width:240px">
-      <label class="lbl">장소 설명 <span class="opt">— 비우면 배경과 같은 곳으로</span></label>
+      <label class="lbl">장소 설명 <span class="opt">— 비우면 2번 배경과 같은 곳으로</span></label>
       <input type="text" id="endScene" placeholder="예: 체육관 입구 게시판 앞">
+      <p class="hint" style="margin-bottom:0">사진과 <b>둘 중 하나만 고르는 게 아닙니다.</b>
+        같이 쓰면 사진이 <b>장소</b>를, 글이 <b>분위기와 세부</b>를 정합니다.</p>
     </div>
     <div style="flex:1.2;min-width:200px">
       <label class="lbl">장소 사진 <span class="opt">— 선택</span></label>
@@ -453,6 +476,11 @@ table.subs .del:hover{color:var(--err)}
     오른쪽 버튼은 <b>②까지 이미 만든 뒤</b>에 씁니다 — 장면은 그대로 두고 글자만 바꿔 끼웁니다.
     아직 ②를 안 눌렀다면 누를 필요가 없습니다.</p>
   <div class="prev" id="endPrev"></div>
+  <div class="row" id="rejoinRow" style="display:none;margin-top:10px">
+    <button class="btn sec" id="rejoin">완성 영상에 이 엔딩 붙이기</button>
+    <span class="hint" style="margin:0">이미 만든 춤 영상 뒤에 엔딩만 이어붙입니다 —
+      <b>공짜지만 1~2분</b> 걸립니다 (영상을 통째로 다시 인코딩합니다). 춤 영상을 다시 만들지는 않습니다.</span>
+  </div>
   <div class="msg" id="pMsg"></div>
 </div>
 
@@ -520,8 +548,9 @@ table.subs .del:hover{color:var(--err)}
   <div class="hr"></div>
   <label class="lbl">카메라 무빙</label>
   <select id="camera"></select>
-  <p class="hint">생성된 영상에 나중에 입히는 방식이라 <b>몇 번이든 바꿔볼 수 있습니다.</b>
-    자막은 같이 흔들리지 않게 카메라 뒤에 얹습니다.</p>
+  <p class="hint">생성된 영상에 나중에 입히는 방식이라 <b>몇 번이든 공짜로 바꿔볼 수 있습니다.</b>
+    바꾸면 이미 만든 영상에 다시 입힙니다 — 영상을 새로 만들지는 않지만 <b>1~2분 걸립니다.</b>
+    바뀐 게 없으면 다시 굽지 않고 바로 끝납니다. 자막은 같이 흔들리지 않게 카메라 뒤에 얹습니다.</p>
   <table class="subs" id="subTable"></table>
   <div class="row" style="margin-top:12px">
     <button class="btn sec sm" id="subAdd">+ 줄 추가</button>
@@ -573,17 +602,53 @@ table.subs .del:hover{color:var(--err)}
 <script>
 const $ = s => document.querySelector(s);
 
-// 처리기 안에서 예외가 나면 버튼이 "안 눌리는" 것처럼 보인다. 무조건 띄운다.
-function fatal(msg){
-  let b = document.getElementById('errbar');
+// 아래쪽 알림 띠. 두 종류를 구분한다.
+//
+//   연결 문제 — 와이파이가 깜빡인 것이라 다시 하면 된다. 다음 요청이
+//              성공하면 스스로 사라진다.
+//   화면 오류 — 코드 쪽 문제라 알려 주셔야 고친다. 그대로 남긴다.
+//
+// 전에는 둘을 똑같이 "화면 오류"로 띄우고 한 번 뜨면 영원히 남았다. 영상을
+// 만드는 동안 1.5초마다 묻기 때문에, 10분이면 400번 중 한 번만 끊겨도
+// 빨간 띠가 떠서 계속 붙어 있었다.
+const NET_MSG = '연결이 끊겼습니다 — 인터넷 상태를 확인하고 다시 해 주세요.';
+const NET_RE = /Failed to fetch|NetworkError|Load failed|network error|연결이 끊겼습니다/i;
+
+function showBar(id, bg, text){
+  let b = document.getElementById(id);
   if (!b){
     b = document.createElement('div');
-    b.id = 'errbar';
+    b.id = id;
     b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:999;padding:11px 16px;'
-      + 'background:#D64550;color:#fff;font-size:13px;line-height:1.5';
+      + 'color:#fff;font-size:13px;line-height:1.5;display:flex;gap:12px;align-items:center';
+    const t = document.createElement('span');
+    t.style.flex = '1';
+    const r = document.createElement('button');
+    r.textContent = '다시 불러오기';
+    r.style.cssText = 'font:inherit;font-size:12px;border:1px solid rgba(255,255,255,.7);'
+      + 'background:transparent;color:#fff;border-radius:999px;padding:4px 12px;'
+      + 'cursor:pointer;flex:none';
+    r.onclick = () => location.reload();
+    b.append(t, r);
     document.body.appendChild(b);
   }
-  b.textContent = '화면 오류: ' + msg + '  (이 문구를 알려주시면 바로 고칩니다)';
+  b.style.background = bg;
+  b.firstChild.textContent = text;
+}
+
+function netDown(){ showBar('netbar', '#B4820F', NET_MSG); }
+function netUp(){ const b = document.getElementById('netbar'); if (b) b.remove(); }
+
+// 코드 쪽 문제일 때만 나는 말투. 서버가 보낸 한국어 안내와 구별한다.
+const BUG_RE = /is not a function|is not defined|Cannot read|Unexpected token|undefined/i;
+
+function fatal(msg){
+  const m = String(msg);
+  // 끊긴 것은 화면 오류가 아니다. 노란 띠로 알리고, 되면 저절로 사라진다.
+  if (NET_RE.test(m)) return netDown();
+  // 서버가 보낸 안내(한도 초과 같은 것)는 고칠 거리가 아니라 읽을 거리다.
+  if (!BUG_RE.test(m)) return showBar('errbar', '#D64550', m);
+  showBar('errbar', '#D64550', '화면 오류: ' + m + '  (이 문구를 알려주시면 바로 고칩니다)');
 }
 window.addEventListener('error', e => fatal(e.message));
 window.addEventListener('unhandledrejection', e =>
@@ -605,14 +670,29 @@ const SID = (function(){
 // 그림·영상 주소에도 붙인다 (<img src> 는 헤더를 못 싣는다)
 function withSid(u){ return u + (u.includes('?') ? '&' : '?') + 's=' + SID; }
 
+// 읽기(GET)는 몇 번 더 해 봐도 안전하므로, 끊기면 조용히 다시 시도한다.
+// 쓰기(POST)는 두 번 보내면 돈이 두 번 나갈 수 있으므로 한 번만 보낸다.
 async function api(url, opt){
   opt = opt || {};
   opt.headers = Object.assign({'X-Studio-Sid': SID}, opt.headers || {});
-  const r = await fetch(url, opt);
-  const t = await r.text();
-  let j = null; try { j = JSON.parse(t); } catch(e){}
-  if (!r.ok) throw new Error((j && (j.error || j.detail)) || t.slice(0,200) || ('오류 ' + r.status));
-  return j;
+  const get = !opt.method || String(opt.method).toUpperCase() === 'GET';
+  const tries = get ? 3 : 1;
+  for (let i = 0; i < tries; i++){
+    if (i) await new Promise(r => setTimeout(r, 700 * i));
+    let r, t;
+    try {
+      r = await fetch(url, opt);
+      t = await r.text();
+    } catch(e){
+      netDown();                       // 끊긴 것을 화면에 알린다
+      if (i === tries - 1) throw new Error(NET_MSG);
+      continue;
+    }
+    netUp();                           // 됐으니 끊김 안내는 치운다
+    let j = null; try { j = JSON.parse(t); } catch(e){}
+    if (!r.ok) throw new Error((j && (j.error || j.detail)) || t.slice(0,200) || ('오류 ' + r.status));
+    return j;
+  }
 }
 function form(o){ const f = new FormData(); for (const k in o) f.append(k, o[k]); return f; }
 
@@ -643,36 +723,78 @@ function say(el, text, kind){
 }
 function hide(el){ $(el).classList.remove('show'); }
 
+// 방금 누른 버튼을 기억해 둔다. runTask 는 눌린 자리에서 바로 불리므로,
+// 이 값이 그 작업을 시작시킨 버튼이다.
+//
+// 진행 상황을 적는 자리(.msg)가 미리보기 아래에 있어 화면 밖으로 밀리는 일이
+// 있었다. 눌렀는데 아무 반응이 없어 보이니 같은 버튼을 몇 번씩 누르게 된다.
+// 그래서 버튼 자체를 잠그고 버튼 글자로 진행 상황을 보여준다.
+let LAST_BTN = null;
+document.addEventListener('click', e => {
+  LAST_BTN = (e.target.closest && e.target.closest('button')) || null;
+}, true);
+
 // 긴 작업은 서버 스레드에서 돌고 여기서는 상태만 물어본다.
 // 요청 하나로 몇 분을 붙잡고 있으면 연결이 끊길 때 실패한다.
 async function runTask(start, msgEl, label){
+  const btn = LAST_BTN;                 // 이 작업을 시작시킨 버튼
+  LAST_BTN = null;
+  const was = btn ? btn.textContent : '';
+  const done = () => { if (btn){ btn.disabled = false; btn.textContent = was; } };
+  if (btn){ btn.disabled = true; btn.textContent = '시작하는 중...'; }
+
   say(msgEl, label + ' 시작 중...');
-  try { await start(); } catch(e){ say(msgEl, e.message, 'err'); return false; }
+  let mine;
+  try { mine = await start(); }
+  catch(e){ done(); say(msgEl, e.message, 'err'); return false; }
+  // 방금 시작한 작업의 시작 시각. 이보다 **이른** 기록은 앞 작업이 남긴
+  // 것이므로 무시한다.
+  //
+  // 전에는 그냥 읽는 대로 믿었다. ①엔딩 장면이 끝나 'done' 이 적힌 뒤
+  // ②영상 만들기를 누르면, 아직 안 지워진 그 'done' 을 보고 "엔딩 영상
+  // 만들기 완료" 라고 말해 버렸다 — 람다는 그때부터 일을 시작했는데.
+  //
+  // 더 **늦은** 기록은 막지 않는다. 영상 만들기는 중간에 '마무리' 로
+  // 넘어가면서 시작 시각이 새로 찍히는데, 그것까지 막으면 영영 안 끝난다.
+  const tag = (mine && typeof mine.started === 'number') ? mine.started : null;
   for(;;){
     await new Promise(r => setTimeout(r, 1500));
     let t; try { t = await api(`/api/${JOB.id}/task`); } catch(e){ continue; }
+    if (tag && typeof t.started === 'number' && t.started + 0.5 < tag) continue;
     // waiting = fal 에 맡겨두고 기다리는 중. running 과 똑같이 취급한다.
     if (t.state === 'running' || t.state === 'waiting'){
       const el = t.started ? Math.round(Date.now()/1000 - t.started) : 0;
       const pg = t.total > 0 ? `  ${t.done}/${t.total}` : '';
       say(msgEl, `${label} — ${t.msg || '진행 중'}${pg}   (${el}초 경과)`);
+      if (btn) btn.textContent = `만드는 중... ${el}초`;
       continue;
     }
-    if (t.state === 'error'){ say(msgEl, t.msg || '실패했습니다.', 'err'); await reload(); return false; }
+    if (t.state === 'error'){
+      done(); say(msgEl, t.msg || '실패했습니다.', 'err'); await reload(); return false;
+    }
     // 하던 작업이 사라졌다 (서버가 다시 켜졌거나 죽었다). 끝난 게 아니다.
     if (t.state === 'idle'){
+      done();
       say(msgEl, label + '이(가) 중간에 끊겼습니다 — 서버가 다시 시작된 것 같습니다. 다시 시도해주세요.', 'err');
       await reload(); return false;
     }
+    done();
     say(msgEl, label + ' 완료', 'ok');
     await reload();
     return true;
   }
 }
 
+// 끊겼다고 화면을 깨뜨리지는 않는다. 알리기만 하고 지금 화면을 그대로 둔다
+// (작업은 서버에서 계속 돌고 있으므로, 새로고침하면 이어서 보인다).
 async function reload(){
-  JOB = await api('/api/' + JOB.id);
-  render(); await loadBar(); loadQuota();
+  let fresh;
+  try { fresh = await api('/api/' + JOB.id); }
+  catch(e){ fatal(e.message); return; }
+  JOB = fresh;
+  render();
+  try { await loadBar(); } catch(e){}
+  loadQuota();
 }
 
 // 멈춤 안내 띠. 한 번만 붙인다.
@@ -698,10 +820,11 @@ async function loadQuota(){
       '<b style="color:var(--err)">지금은 새로 만들기를 멈춰 두었습니다</b>'; return; }
     const made = JOB && JOB.render_n ? JOB.render_n : 0;
     const redoLeft = Math.max(0, (q.redo + 1) - made);
+    // 남은 편수는 보여주지 않는다 (쓰는 사람이 알 필요가 없다).
+    // 한도를 다 썼을 때만 알린다.
     $('#quotaLine').innerHTML = q.left > 0
-      ? `이번 달 <b>${q.left}편</b> 더 만들 수 있습니다` +
-        (made > 0 ? ` · 이 영상은 <b>${redoLeft}번</b> 더 다시 만들 수 있습니다` : '')
-      : `<b style="color:var(--err)">이번 달 한도(${q.limit}편)를 다 썼습니다</b> — 다음 달에 다시 이용해 주세요`;
+      ? (made > 0 ? `이 영상은 <b>${redoLeft}번</b> 더 다시 만들 수 있습니다` : '')
+      : `<b style="color:var(--err)">이번 달 한도를 다 썼습니다</b> — 다음 달에 다시 이용해 주세요`;
   } catch(e){ $('#quotaLine').textContent = ''; }
 }
 
@@ -712,8 +835,11 @@ async function loadBar(){
     `<button data-j="${j.id}">${j.title||'새 영상'}${j.result?' ✓':''}</button>` +
     `<button class="x" data-del="${j.id}" title="이 작업 지우기">×</button></span>`
   ).join('') + '<button data-new="1">+ 새 영상</button>';
+  // 실패하면 반드시 말해 준다. 전에는 조용히 삼켜서, 눌러도 아무 일이
+  // 없는 것처럼 보였다 (버튼이 안 눌린다는 말이 여기서 나왔다).
   $('#bar').querySelectorAll('[data-j]').forEach(b => b.onclick = async () => {
-    JOB = await api('/api/' + b.dataset.j); render(); loadBar();
+    try { JOB = await api('/api/' + b.dataset.j); render(); await loadBar(); }
+    catch(err){ alert('작업을 여는 데 실패했습니다.\n\n' + err.message); }
   });
   // 지우면 되돌릴 수 없다. 만든 영상까지 사라지므로 한 번 묻는다.
   $('#bar').querySelectorAll('[data-del]').forEach(b => b.onclick = async (e) => {
@@ -733,9 +859,35 @@ async function loadBar(){
       loadBar();
     } catch(err){ alert(err.message); }
   });
-  $('#bar').querySelector('[data-new]').onclick = async () => {
-    JOB = await api('/api/new', {method:'POST'}); render(); loadBar();
+  $('#bar').querySelector('[data-new]').onclick = async (e) => {
+    const b = e.currentTarget;
+    if (b.disabled) return;
+    b.disabled = true; b.textContent = '만드는 중...';
+    try {
+      JOB = await api('/api/new', {method:'POST'});
+      render(); await loadBar(); loadQuota();
+      window.scrollTo({top:0, behavior:'smooth'});
+    } catch(err){
+      alert('새 작업을 만들지 못했습니다.\n\n' + err.message);
+      b.disabled = false; b.textContent = '+ 새 영상';
+    }
   };
+}
+
+// 같은 내용이면 건드리지 않는다.
+//
+// innerHTML 에 같은 글을 다시 넣어도 브라우저는 <img>·<video> 를 **새로 만든다**.
+// 새로 만들면 다 받아올 때까지 높이가 0 이라, 위쪽 내용이 납작해지면서 보고
+// 있던 자리가 위로 밀린다 ("문구만 바꿔 넣기를 눌렀는데 캐릭터 단계로
+// 돌아간다" 는 말이 여기서 나왔다).
+// 넣은 글을 따로 기억해 둔다. innerHTML 을 다시 읽으면 브라우저가 정리한
+// 모양(따옴표·공백)이라 넣은 글과 달라서, 비교해 봐야 늘 "달라졌다" 가 된다.
+const _lastHTML = new WeakMap();
+function setHTML(sel, html){
+  const el = $(sel);
+  if (_lastHTML.get(el) === html) return;
+  _lastHTML.set(el, html);
+  el.innerHTML = html;
 }
 
 function step(id, state){
@@ -747,12 +899,16 @@ function step(id, state){
 // ── 단계 표시줄 ─────────────────────────────────────────────────────────
 // 칸이 여덟이라 지금 어디인지 모르겠다는 말이 있었다. 상태는 칸이 이미 들고
 // 있으므로(off / done) 따로 세지 않고 칸에서 읽어 칠하기만 한다.
+// 셋째 값이 true 면 건너뛸 수 있는 칸이다. 엔딩과 자막은 안 만들어도
+// 영상이 나오므로, 안 끝났다는 이유로 "지금 여기"를 붙잡고 있으면 안 된다.
+// (엔딩을 안 만들고 넘어가면 표시줄이 5에 계속 멈춰 있었다.)
 const STEPS = [['#c1','캐릭터'], ['#c2','배경'], ['#c3','키컷'], ['#c4','춤 영상'],
-               ['#c5','엔딩'], ['#c6s','자막'], ['#c6','만들기'], ['#c7','완성']];
+               ['#c5','엔딩', true], ['#c6s','자막', true], ['#c6','만들기'], ['#c7','완성']];
 
 function buildSteps(){
-  $('#steps').innerHTML = STEPS.map(([id, label], i) =>
-    `<button class="stp" type="button" data-go="${id}"><b>${i+1}</b>${label}</button>`).join('');
+  $('#steps').innerHTML = STEPS.map(([id, label, opt], i) =>
+    `<button class="stp" type="button" data-go="${id}"${opt ? ' title="선택 — 건너뛸 수 있습니다"' : ''}>`
+    + `<b>${i+1}</b>${label}</button>`).join('');
   $('#steps').onclick = e => {
     const b = e.target.closest('[data-go]');
     if (!b || b.classList.contains('off')) return;
@@ -760,19 +916,44 @@ function buildSteps(){
   };
 }
 
-function paintSteps(){
-  let cur = -1;
+// "지금 여기"는 끝났는지 여부로 짐작하지 않고, 화면에서 직접 읽는다.
+//
+// 끝난 칸으로 세면 건너뛸 수 있는 칸(엔딩·자막) 때문에 반드시 틀린다.
+// 엔딩을 안 만들면 영원히 5에 멈추고, 선택 칸을 아예 빼고 세면 5번을 하고
+// 있는데 7로 뛴다. 보고 있는 칸을 가리키는 게 어느 쪽으로도 안 틀린다.
+let CUR = -1;
+
+function viewStep(){
+  const line = 110;                 // 붙어 있는 띠 바로 아래
+  let at = 0;
   STEPS.forEach(([id], i) => {
     const c = $(id);
-    if (cur < 0 && !c.classList.contains('off') && !c.classList.contains('done')) cur = i;
+    if (c.classList.contains('off')) return;
+    if (c.getBoundingClientRect().top <= line) at = i;
   });
+  return at;
+}
+
+function markCur(){
+  const i = viewStep();
+  if (i === CUR) return;
+  CUR = i;
+  $('#steps').querySelectorAll('.stp').forEach((b, k) => b.classList.toggle('cur', k === i));
+}
+window.addEventListener('scroll', markCur, {passive: true});
+window.addEventListener('resize', markCur);
+
+function paintSteps(){
   $('#steps').querySelectorAll('.stp').forEach((b, i) => {
-    const c = $(STEPS[i][0]);
+    const c = $(STEPS[i][0]), opt = STEPS[i][2];
+    const done = c.classList.contains('done'), off = c.classList.contains('off');
     b.className = 'stp'
-      + (c.classList.contains('done') ? ' done' : '')
-      + (c.classList.contains('off') ? ' off' : '')
-      + (i === cur ? ' cur' : '');
+      + (done ? ' done' : '')
+      + (off ? ' off' : '')
+      // 선택 칸은 아직 안 했다는 것만 옅게 알려준다 (못 가는 칸과는 다르다)
+      + (opt && !done && !off ? ' opt' : '');
   });
+  CUR = -1; markCur();              // 칸 모양을 새로 칠했으니 다시 표시한다
 }
 
 // 자막의 진짜 값은 화면 입력칸이다. JOB 을 서버 응답으로 갈아끼우다
@@ -876,19 +1057,23 @@ function render(){
         ? (j.character_stood ? '전신으로 세운 캐릭터 — 이걸로 만듭니다'
                              : '다듬은 캐릭터 — 이걸로 만듭니다')
         : '올리신 그림'}</p></div>`;
-  $('#charPrev').innerHTML = chtml;
+  setHTML('#charPrev', chtml);
+  const mode = j.style_mode || '3d';
+  let modeLabel = '고른 화풍';
   if (FONTS && FONTS.style_modes){
-    $('#styleMode').value = j.style_mode || '3d';
-    const m = FONTS.style_modes.find(x => x.id === (j.style_mode || '3d'));
+    $('#styleMode').value = mode;
+    const m = FONTS.style_modes.find(x => x.id === mode);
     $('#styleNote').textContent = m ? m.note : '';
+    if (m) modeLabel = m.label;
   }
-  const doodle = (j.style_mode || '3d') === 'doodle';
-  // 손보기 도구는 그림이 생긴 뒤에만 보인다. 다듬기는 낙서체일 때만 쓴다.
+  // 손보기 도구는 그림이 생긴 뒤에만 보인다.
+  // 다시 그리기는 어느 화풍에서나 쓴다. 무엇으로 바뀌는지는 눌러 보기 전에
+  // 알아야 하므로 고른 화풍을 단추 이름에 적는다 (전에는 '그림 다듬기'라서
+  // 손그림을 골라도 낙서체로 바뀌는 단추인 줄 알 수 없었다).
   $('#charTools').style.display = j.character ? '' : 'none';
-  $('#charClean').style.display = doodle ? '' : 'none';
-  $('#charToolNote').textContent = doodle
-    ? '앉아 있거나 얼굴만 있으면 세우기 · 낙서라면 다듬기'
-    : '앉아 있거나 얼굴만 있는 그림이면 눌러주세요';
+  $('#charClean').textContent = modeLabel + '로 다시 그리기';
+  $('#charToolNote').textContent =
+    '앉아 있거나 얼굴만 있으면 세우기 · 화풍을 바꿨으면 다시 그리기';
   if (j.char_prompt && !$('#charPrompt').value) $('#charPrompt').value = j.char_prompt;
   const pp = $('#personPhotoImg');
   if (j.person_photo){
@@ -909,13 +1094,15 @@ function render(){
     bp.style.display = 'none'; $('#bgPhotoClear').style.display = 'none';
   }
 
+  $('#keySize').value = j.keycut_size || 'mid';
+
   step('#c3', j.keycut ? (j.keycut_approved ? 'done' : '') : 'off');
-  $('#keyPrev').innerHTML = j.keycut
-    ? `<img class="shot" style="width:250px" src="${withSid(`/api/${j.id}/file/${j.keycut}?v=${j.keycut_n}`)}">` : '';
-  $('#keyChecks').innerHTML = j.keycut ? `
+  setHTML('#keyPrev', j.keycut
+    ? `<img class="shot" style="width:250px" src="${withSid(`/api/${j.id}/file/${j.keycut}?v=${j.keycut_n}`)}">` : '');
+  setHTML('#keyChecks', j.keycut ? `
     <p class="chk">· 발밑에 바닥이 넉넉히 보이나요? 여백이 없으면 다리가 뭉개집니다.</p>
     <p class="chk">· 손에 든 물건이 없나요? 들고 있으면 춤추다 머리 위로 올라갑니다.</p>
-    <p class="chk">· 머리끝부터 발끝까지 다 보이나요?</p>` : '';
+    <p class="chk">· 머리끝부터 발끝까지 다 보이나요?</p>` : '');
   $('#keyOk').style.display = j.keycut_approved ? 'none' : '';
   $('#keyUndo').style.display = j.keycut_approved ? '' : 'none';
   if (j.keycut_approved) say('#keyMsg', '승인됨 — 이 키컷으로 영상을 만듭니다.', 'ok');
@@ -987,9 +1174,13 @@ function render(){
     ehtml += `<div><img class="shot" style="width:190px" src="${withSid(`/api/${j.id}/file/${shot}?t=${posterStamp()}_${j.ending_still_n}`)}">
       <p class="hint">엔딩 장면 (${j.ending_still_n}번째) — 이걸로 영상을 만듭니다</p></div>`;
   if (j.ending)
-    ehtml += `<div><video class="shot" style="width:190px" src="${withSid(`/api/${j.id}/file/${j.ending}?t=${Date.now()}`)}" controls muted></video>
+    // 주소에 시각을 넣으면 render 할 때마다 달라져 영상을 매번 새로 받는다.
+    // 엔딩이 실제로 바뀔 때만 달라지는 값을 쓴다.
+    ehtml += `<div><video class="shot" style="width:190px" src="${withSid(`/api/${j.id}/file/${j.ending}?v=${j.ending_still_n||0}_${j.spent||0}`)}" controls muted></video>
       <p class="hint">완성된 엔딩</p></div>`;
-  $('#endPrev').innerHTML = ehtml;
+  setHTML('#endPrev', ehtml);
+  // 영상도 있고 엔딩도 있는데 아직 안 붙어 있을 때만 띄운다
+  $('#rejoinRow').style.display = (j.result && j.ending) ? '' : 'none';
 
   // 엔딩 장면을 만들지 않았으면 엔딩은 붙지 않는다. 체크해 둔 채로 두면
   // 넣은 줄 알고 기다리게 되므로, 아예 못 켜게 하고 이유를 적어 둔다.
@@ -1017,12 +1208,13 @@ function render(){
   drawSubs();
 
   step('#c6', j.plate ? (j.result ? 'done' : '') : 'off');
-  $('#cutsGrid').innerHTML = (j.cuts||[]).map(c =>
-    `<video src="${withSid(`/api/${j.id}/file/${c}`)}" controls muted></video>`).join('');
+  setHTML('#cutsGrid', (j.cuts||[]).map(c =>
+    `<video src="${withSid(`/api/${j.id}/file/${c}`)}" controls muted></video>`).join(''));
 
   step('#c7', j.result ? 'done' : 'off');
-  $('#finPrev').innerHTML = j.result
-    ? `<video class="final" src="${withSid(`/api/${j.id}/file/${j.result}?t=${Date.now()}`)}" controls></video>` : '';
+  setHTML('#finPrev', j.result
+    // subs_sig 는 완성본을 다시 구울 때만 바뀐다. 딱 그때만 새로 받으면 된다.
+    ? `<video class="final" src="${withSid(`/api/${j.id}/file/${j.result}?v=${j.subs_sig||j.render_n||0}`)}" controls></video>` : '');
 
 
   $('#scoreWarn2').innerHTML = warnHTML(j.score_check);
@@ -1062,7 +1254,7 @@ $('#styleMode').onchange = async () => {
 
 $('#charClean').onclick = () => runTask(
   () => api(`/api/${JOB.id}/character/cleanup`,
-    {method:'POST', body:form({feedback:$('#charFix').value})}), '#charMsg', '그림 다듬기');
+    {method:'POST', body:form({feedback:$('#charFix').value})}), '#charMsg', '다시 그리기');
 
 $('#charStand').onclick = () => runTask(
   () => api(`/api/${JOB.id}/character/stand`,
@@ -1123,7 +1315,8 @@ $('#bgPhotoClear').onclick = async () => {
 };
 
 $('#bgGo').onclick = () => runTask(
-  () => api(`/api/${JOB.id}/keycut`, {method:'POST', body:form({bg_prompt:$('#bgPrompt').value})}),
+  () => api(`/api/${JOB.id}/keycut`, {method:'POST',
+    body:form({bg_prompt:$('#bgPrompt').value, size:$('#keySize').value})}),
   '#bgMsg', '키컷 만들기');
 
 // 캐릭터와 배경을 나눠 받아 한 문장으로 합친다. 어느 쪽 이야기인지 알려주면
@@ -1136,7 +1329,8 @@ function keyFeedback(){
 
 $('#keyAgain').onclick = () => runTask(
   () => api(`/api/${JOB.id}/keycut`, {method:'POST',
-    body:form({bg_prompt:$('#bgPrompt').value, feedback:keyFeedback()})}),
+    body:form({bg_prompt:$('#bgPrompt').value, feedback:keyFeedback(),
+               size:$('#keySize').value})}),
   '#keyMsg', '키컷 다시 만들기');
 
 $('#keyOk').onclick = async () => {
@@ -1198,8 +1392,14 @@ function markDirty(){
 async function drawPoster(){
   try {
     JOB = await saveEndOptions();
+    // 글자만 적어 둔다 (apply=false). 미리보기는 그림 한 장 그리는 일인데,
+    // 여기서 "영상에 글자 얹기" 작업까지 띄우면 두 가지가 꼬인다.
+    // 하나, 바로 다음 작업이 "이미 다른 작업이 진행 중" 으로 막힌다.
+    // 둘, 그 작업은 시작할 때 읽은 기록을 끝날 때 되써서, 그사이 바꾼
+    //     문구를 옛 문구로 덮어 버린다 (눌러도 안 바뀌는 것처럼 보였다).
     await api(`/api/${JOB.id}/poster`, {method:'POST',
-      body:form({l1:$('#p1').value, l2:$('#p2').value, l3:$('#p3').value})}).catch(()=>{});
+      body:form({l1:$('#p1').value, l2:$('#p2').value, l3:$('#p3').value,
+                 apply:'false'})}).catch(()=>{});
     JOB.poster = [$('#p1').value, $('#p2').value, $('#p3').value];
     POSTER_DIRTY = false;
     $('#posterDirty').textContent = '';
@@ -1252,11 +1452,17 @@ $('#posterMode').onchange = async () => {
 $('#endStill').onclick = async () => {
   try {
     await saveEndOptions();
+    // 글자만 적어 둔다. 장면을 새로 그릴 참이라 지금 얹을 필요가 없고,
+    // 얹는 작업을 띄우면 바로 아래 진짜 작업이 409 로 막힌다.
     await api(`/api/${JOB.id}/poster`, {method:'POST',
-      body:form({l1:$('#p1').value, l2:$('#p2').value, l3:$('#p3').value})}).catch(()=>{});
+      body:form({l1:$('#p1').value, l2:$('#p2').value, l3:$('#p3').value,
+                 apply:'false'})}).catch(()=>{});
     runTask(() => api(`/api/${JOB.id}/ending/still`, {method:'POST'}), '#pMsg', '엔딩 장면 만들기');
   } catch(e){ say('#pMsg', e.message, 'err'); }
 };
+
+$('#rejoin').onclick = () => runTask(
+  () => api(`/api/${JOB.id}/rejoin`, {method:'POST'}), '#pMsg', '엔딩 이어붙이기');
 
 $('#endVideo').onclick = async () => {
   try {
@@ -1291,16 +1497,34 @@ async function saveSubStyle(){
   return j;
 }
 
+// 모양·카메라를 바꾸면 이미 만든 영상에 **바로 입힌다**. 생성이 아니라
+// 후처리라 공짜다.
+//
+// 전에는 설정만 저장되고 영상은 그대로였다. 영상에 입히는 길(subtitles/restyle)이
+// 서버에는 있는데 화면에서 부르는 곳이 한 군데도 없었다. 그래서 카메라 무빙을
+// '없음' 으로 바꿔도 영상은 계속 흔들렸다.
+//
+// 연달아 바꾸면 작업이 서로 부딪히므로, 잠깐 기다렸다가 마지막 것만 돌린다.
+let RESTYLE_T = null;
+function restyleSoon(){
+  if (!JOB || !JOB.result) return;          // 아직 만든 영상이 없으면 할 일이 없다
+  clearTimeout(RESTYLE_T);
+  say('#subMsg', '바꾼 모양을 영상에 입히려고 준비 중입니다...');
+  RESTYLE_T = setTimeout(() => runTask(
+    () => api(`/api/${JOB.id}/subtitles/restyle`, {method:'POST'}),
+    '#subMsg', '영상에 입히기'), 2500);
+}
+
 $('#subPos').onchange = $('#subStyle').onchange = $('#subColor').onchange =
   $('#subOutColor').onchange = $('#subBold').onchange = $('#camera').onchange =
   async () => {
-    try { JOB = await saveSubStyle(); }
+    try { JOB = await saveSubStyle(); restyleSoon(); }
     catch(e){ say('#subMsg', e.message, 'err'); }
   };
 $('#subOutline').oninput = () => $('#subOutVal').textContent = ($('#subOutline').value/2).toFixed(1)+'%';
 $('#subSize').oninput = () => $('#subSizeVal').textContent = ($('#subSize').value/10).toFixed(1)+'%';
 $('#subOutline').onchange = $('#subSize').onchange = async () => {
-  try { JOB = await saveSubStyle(); }
+  try { JOB = await saveSubStyle(); restyleSoon(); }
   catch(e){ say('#subMsg', e.message, 'err'); }
 };
 
@@ -1396,16 +1620,22 @@ $('#reFinish').onclick = () => runTask(
   '#fMsg', '문구 반영');
 
 const FONT_SAMPLE = '다람쥐 헌 쳇바퀴에 타고파';
+// 글꼴 견본은 서버가 그려 한 장에 쌓아 보낸다. 목록 순서와 줄 번호가 같다.
+// 브라우저에는 그 글꼴들이 없어서 CSS 로는 전부 기본 글꼴로 떨어진다.
+const SHEET_ROW = 46;
+function sampleRow(idx){     // idx 는 FONTS.fonts 안에서의 번호
+  return `<div class="sp img" style="background-position:0 -${idx * SHEET_ROW}px"></div>`;
+}
 let FONT_VALUE = '', PFONT_VALUE = '';
 
 function fontLabel(f){ return f || '모양 기본값 그대로'; }
 
 function buildPFontList(){
   const items = [''].concat(FONTS.fonts);
-  $('#pFontList').innerHTML = items.map(f => `
+  $('#pFontList').innerHTML = items.map((f, i) => `
     <div class="it${f === PFONT_VALUE ? ' on' : ''}" data-f="${f}">
       <div class="nm">${f || '기본 (맑은 고딕)'}</div>
-      <div class="sp" ${f ? `style="font-family:'${f}',sans-serif"` : ''}>${FONT_SAMPLE}</div>
+      ${f ? sampleRow(i - 1) : `<div class="sp">${FONT_SAMPLE}</div>`}
     </div>`).join('');
   $('#pFontList').querySelectorAll('[data-f]').forEach(el => el.onclick = async () => {
     PFONT_VALUE = el.dataset.f;
@@ -1417,18 +1647,20 @@ function buildPFontList(){
 }
 
 function paintPFontBtn(){
-  $('#pFontBtn').innerHTML = `<span style="${PFONT_VALUE ?
-    `font-family:'${PFONT_VALUE}',sans-serif` : ''}">${
-    PFONT_VALUE ? FONT_SAMPLE : '기본 (맑은 고딕)'}</span><span class="cap">${
-    PFONT_VALUE || '기본'} ▾</span>`;
+  const i = FONTS && FONTS.fonts ? FONTS.fonts.indexOf(PFONT_VALUE) : -1;
+  $('#pFontBtn').innerHTML = (PFONT_VALUE && i >= 0
+    ? sampleRow(i) : `<span>기본 (맑은 고딕)</span>`)
+    + `<span class="cap">${PFONT_VALUE || '기본'} ▾</span>`;
+  $('#pFontList').querySelectorAll('[data-f]').forEach(el =>
+    el.classList.toggle('on', el.dataset.f === PFONT_VALUE));
 }
 
 function buildFontList(){
   const items = [''].concat(FONTS.fonts);
-  $('#subFontList').innerHTML = items.map(f => `
+  $('#subFontList').innerHTML = items.map((f, i) => `
     <div class="it${f === FONT_VALUE ? ' on' : ''}" data-f="${f}">
       <div class="nm">${fontLabel(f)}</div>
-      <div class="sp" ${f ? `style="font-family:'${f}',sans-serif"` : ''}>${FONT_SAMPLE}</div>
+      ${f ? sampleRow(i - 1) : `<div class="sp">${FONT_SAMPLE}</div>`}
     </div>`).join('');
   $('#subFontList').querySelectorAll('[data-f]').forEach(el => el.onclick = async () => {
     FONT_VALUE = el.dataset.f;
@@ -1442,9 +1674,10 @@ function buildFontList(){
 
 function paintFontBtn(){
   const b = $('#subFontBtn');
-  b.innerHTML = `<span style="${FONT_VALUE ? `font-family:'${FONT_VALUE}',sans-serif` : ''}">${
-    FONT_VALUE ? FONT_SAMPLE : '모양 기본값 그대로'}</span><span class="cap">${
-    fontLabel(FONT_VALUE)} ▾</span>`;
+  const i = FONTS && FONTS.fonts ? FONTS.fonts.indexOf(FONT_VALUE) : -1;
+  b.innerHTML = (FONT_VALUE && i >= 0
+    ? sampleRow(i) : `<span>모양 기본값 그대로</span>`)
+    + `<span class="cap">${fontLabel(FONT_VALUE)} ▾</span>`;
   $('#subFontList').querySelectorAll('[data-f]').forEach(el =>
     el.classList.toggle('on', el.dataset.f === FONT_VALUE));
 }

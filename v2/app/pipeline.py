@@ -34,7 +34,21 @@ CUT_SEC = 6                     # 4)
 NB_EDIT = "fal-ai/nano-banana-2/edit"
 NB_MAKE = "fal-ai/nano-banana-2"      # 넣을 그림이 없을 때 (글만으로 만들기)
 NB_PRICE = 0.08
-POSTER_VID_PRICE = 0.54
+# 엔딩 영상 값. fal 은 크기와 길이로 매긴다 — 1000토큰당 $0.0112 이고
+# 토큰은 (가로 x 세로 x 초 x 24) / 1024 다. 그래서 상수 하나로 두지 않고
+# 실제로 뽑는 크기·길이로 계산한다.
+POSTER_VID_RES = "720p"              # 춤 영상(720x1280)과 같은 크기
+POSTER_VID_WH = (720, 1280)
+_FAL_TOKEN_USD = 0.0112 / 1000
+
+
+def poster_vid_price(sec=4):
+    """엔딩 영상 한 편 값(달러). 480p 로 뽑던 때는 4초에 약 $0.45 였다."""
+    w, h = POSTER_VID_WH
+    return round(w * h * int(sec) * 24 / 1024 * _FAL_TOKEN_USD, 3)
+
+
+POSTER_VID_PRICE = poster_vid_price(4)      # 4초 기준 (약 $0.97)
 
 def _default_font(bold):
     """포스터 글자에 쓸 기본 한글 글꼴.
@@ -53,13 +67,31 @@ def _default_font(bold):
             p = os.path.join(r, n)
             if os.path.exists(p):
                 return p
-    for r in roots:                      # 이름이 달라도 한글 글꼴이 있으면 쓴다
+    # 이름이 정확히 안 맞을 때. 전에는 알파벳 순 **첫 파일**을 그냥 집었고,
+    # 그래서 서버의 기본 글꼴이 GothicA1-Black 이 되어 있었다 (사용자가 그
+    # 글꼴을 골라도 아무 변화가 없어 "글꼴이 안 바뀐다" 로 보였다).
+    # 이제 선호 순서를 두고, 굵기도 원하는 쪽을 고른다.
+    prefer = ["notosanskr", "nanumgothic", "notoserifkr", "malgun", "nanum", "noto", "gothic"]
+    cands = []
+    for r in roots:
         d = Path(r)
         if d.is_dir():
-            for p in sorted(d.rglob("*.[to]tf")):
-                if any(k in p.name for k in ("Nanum", "Noto", "Gothic", "malgun")):
-                    return str(p)
-    return None
+            for p in d.rglob("*.[to]tf"):
+                if any(k in p.name.lower() for k in ("nanum", "noto", "gothic", "malgun")):
+                    cands.append(p)
+    if not cands:
+        return None
+
+    def rank(p):
+        low = p.name.lower()
+        fam = next((i for i, k in enumerate(prefer) if k in low), len(prefer))
+        if bold:
+            w = 0 if "-bold" in low else (1 if "bold" in low else 2)
+        else:
+            w = 0 if ("regular" in low or "-r." in low) else (1 if "light" in low else 2)
+        return (fam, w, len(p.name), str(p))
+
+    return str(min(cands, key=rank))
 
 
 FONT_B = _default_font(True)
@@ -71,12 +103,11 @@ INK = (38, 34, 28)
 # 크기는 두 방향으로 밀린다. 크면 영상 중간에 더 커져서 팔다리가 잘리고
 # (28초 한 번에 뽑았더니 머리 폭 38% -> 52%), 작으면 Kling 이 몸통을 못 찾아
 # 생성을 거부한다 (23% 에서 "No complete upper body detected"). 58% 가 그 사이다.
-FRAMING = (
+FRAMING_T = (
     "IMPORTANT FRAMING: the character stands in a scene, seen from a little distance. "
-    "Its whole body from head to feet spans about 58 percent of the image height. The top of "
-    "its head sits at roughly 18 percent down from the top edge and its feet at roughly "
-    "80 percent down, so there is open background above the head and a "
-    "wide stretch of empty ground below the feet. "
+    "Its whole body from head to feet spans about %d percent of the image height, and its feet "
+    "rest at roughly 80 percent down from the top edge, so there is open background above its "
+    "head and a wide stretch of empty ground below its feet. "
     "The character is centered horizontally and clearly narrower than the frame, with open "
     "background on both sides - it must never touch any edge of the image. "
     "Full body visible from the top of the head to the feet, nothing cropped. "
@@ -84,6 +115,15 @@ FRAMING = (
     "and no extra objects or props lying around. "
     "Drawing it smaller must NOT change the character itself: its colors, markings, face and "
     "clothing stay exactly as in the reference image - same fur color, same everything. ")
+
+
+def framing(ratio=0.62):
+    """캐릭터가 차지할 비율을 글로도 한 번 더 못박는다.
+
+    글의 숫자가 판(layout_plate)과 어긋나면 모델이 둘 사이에서 갈팡질팡한다.
+    그래서 판에 쓴 비율을 그대로 받아 쓴다.
+    """
+    return FRAMING_T % int(round(ratio * 100))
 
 # 3) 손에 든 물건 금지
 EMPTY_HANDS = (
@@ -146,16 +186,21 @@ def mode_of(name):
     return (m["style"] or STYLE), (m["light"] or LIGHT)
 
 
-# 낙서를 캐릭터로 다듬는 단계. 원본의 맛은 살리고 팔다리만 또렷하게 만든다.
-SKETCH_CLEAN = (
-    "The reference image is a rough hand-drawn sketch or doodle. Redraw it as a clean character "
-    "on a plain white background, keeping the original drawing's identity exactly: same shapes, "
-    "same colors, same face, same proportions and the same charming hand-drawn wobble. "
-    "Do not make it realistic, do not add 3D shading, do not smooth it into a polished mascot - "
-    "it must still look like the same doodle, only tidied up. "
+# 고른 화풍으로 캐릭터를 다시 그리는 단계. 누가 봐도 같은 캐릭터인데 그림체만
+# 바뀐다. 화풍 문장(mode_of)은 이 뒤에 붙는다.
+#
+# 전에는 "원본 낙서를 그대로 두라"고만 적어서, 손그림을 골라도 낙서체로 바뀌지
+# 않았다 (이미 낙서인 그림만 정리될 뿐이었다).
+CLEAN_REDRAW = (
+    "Redraw the character from the reference image as one clean, complete character on a plain "
+    "white background. Keep its identity so it is unmistakably the same character: the same "
+    "shapes, colours, face, markings, clothing and worn accessories, and the same proportions. "
+    "What must change is only HOW it is drawn - follow the style instruction below exactly, "
+    "even when the reference image is drawn in a completely different style. "
     "IMPORTANT: give it a clearly readable body - head, torso, two arms and two legs each "
-    "distinct and separated, arms held away from the body in a relaxed A-pose, feet flat. "
-    "Full body from head to feet, centered, generous empty margin on all sides. "
+    "distinct and separated, arms held away from the body in a relaxed A-pose, feet flat, "
+    "nothing crossed and no props held in the hands. "
+    "Full body from head to feet, centred, with a generous empty margin on all sides. "
     "No text, no background, no other characters. ")
 
 
@@ -165,8 +210,8 @@ STAND_POSE = (
     "Redraw the SAME character from the reference image standing upright, seen from the front, "
     "full body from the top of the head to the soles of both feet, on a plain light background. "
     "Keep its identity EXACTLY: the same shapes, colours, face, markings, clothing and worn "
-    "accessories. Do not restyle it, do not change its proportions, do not turn it into a "
-    "different character. "
+    "accessories. Do not change its proportions and do not turn it into a different character. "
+    "How it is drawn follows the style instruction below - that part may change. "
     "If the reference shows it sitting, lying down, crouching, cropped or only from the chest up, "
     "reconstruct the missing parts so they match what is visible, and stand it up. "
     "IMPORTANT: head, torso, two arms and two legs must each be distinct and separated - arms "
@@ -240,11 +285,12 @@ def fix_note(feedback):
             "Apply this correction and make it clearly visible in the new image: %s. " % t)
 
 
-def clean_sketch(char_path, out_path, feedback=None):
-    """낙서 그림을 캐릭터로 다듬는다. 원본을 덮어쓰지 않고 새 파일로 만든다."""
+def clean_sketch(char_path, out_path, style_mode="3d", feedback=None):
+    """캐릭터를 고른 화풍으로 다시 그린다. 원본을 덮어쓰지 않고 새 파일로 만든다."""
     tmp = tempfile.mkdtemp()
     try:
-        return _nb(SKETCH_CLEAN + fix_note(feedback), [char_path], out_path, tmp)
+        st, _ = mode_of(style_mode)
+        return _nb(CLEAN_REDRAW + st + fix_note(feedback), [char_path], out_path, tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -309,16 +355,22 @@ def _trim(im, tol=18):
     return (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
 
 
-def layout_plate(char_path, out_path, ratio=0.62, feet=0.80, size=(1080, 1920)):
-    """캐릭터를 정해진 크기로 9:16 판 위에 올려둔다.
+def layout_plate(char_path, out_path, ratio=0.62, feet=0.80, size=(1080, 1920),
+                 wide=0.80, floor=0.40):
+    """캐릭터를 정해진 크기로 9:16 판 위에 올려두고, **실제로 올린 비율**을 돌려준다.
 
     크기를 글로 시키면 매번 다르게 나온다 (45% 로 적어도 70% 가 나왔다).
     아예 원하는 크기로 배치한 판을 주고 '그대로 두고 배경만 그려라' 라고 하면
     모델이 배치를 따라간다. ratio 는 캐릭터 키가 차지할 비율, feet 는 발바닥 위치.
 
-    ratio 를 0.45 로 내렸더니 Kling 이 "몸통을 못 찾겠다"며 생성을 거부했다
-    (No complete upper body detected). 모델이 거기서 더 작게 그려 23% 까지
-    내려간 탓이다. 0.58 은 잘리지도 않고 Kling 인식도 통과하는 선이다.
+    wide 는 가로로 퍼진 캐릭터가 넘지 않을 폭이다. 갈기가 큰 사자처럼 옆으로
+    넓은 그림은 여기 먼저 걸려서, 키를 아무리 키워도 같은 크기로 눌렸다
+    (보통 58.8%, 크게 58.8% — 골라도 안 바뀐다는 말이 여기서 나왔다).
+    그래서 wide 도 크기 선택에 따라 같이 움직인다.
+
+    floor 아래로는 안 내린다. 45% 판에서 모델이 23% 까지 줄여 그렸을 때
+    Kling 이 "몸통을 못 찾겠다"며 거부한 적이 있다. 지금은 판을 거의 그대로
+    따르므로(49.9% 판 → 51.2% 그림) 그때만큼 위험하지는 않다.
     """
     W, H = size
     im = Image.open(char_path)
@@ -333,16 +385,50 @@ def layout_plate(char_path, out_path, ratio=0.62, feet=0.80, size=(1080, 1920)):
     cut = im.crop(box)
     hh = int(H * ratio)
     ww = max(1, round(cut.width * hh / cut.height))
-    # 가로로 퍼진 캐릭터는 폭에 맞춘다. 이 한계를 60% 로 뒀더니 정사각형에
-    # 가까운 캐릭터(뿌까)가 키 30% 로 쪼그라들어 Kling 이 몸통을 못 찾았다.
-    if ww > W * 0.80:
-        ww = int(W * 0.80)
+    # 가로로 퍼진 캐릭터는 폭에 먼저 걸린다. 그만큼 키를 줄인다.
+    if ww > W * wide:
+        ww = int(W * wide)
         hh = max(1, round(cut.height * ww / cut.width))
+    # 다만 폭 때문에 줄인 키가 아래 한계를 넘어가면, 한계를 지킨다.
+    # (너무 작으면 Kling 이 몸통을 못 찾아 생성 자체를 거부한다)
+    if hh < H * floor:
+        hh = int(H * floor)
+        ww = max(1, round(cut.width * hh / cut.height))
     cut = cut.resize((ww, hh), Image.LANCZOS)
     plate = Image.new("RGB", (W, H), (255, 255, 255))
     plate.paste(cut, ((W - ww) // 2, int(H * feet) - hh))
     plate.save(out_path)
-    return out_path
+    return out_path, hh / H          # 글에도 **실제로 올린** 비율을 써야 한다
+
+
+# 캐릭터 크기. 글로 "작게 그려줘" 라고 적어도 안 먹는다 — 크기는 아래
+# layout_plate 가 판에 **직접** 박아 넣고, LAYOUT_LOCK 이 "그 크기를 그대로
+# 지켜라" 라고 못박기 때문이다. 그래서 수정사항이 아니라 값으로 받는다.
+#
+# 폭이 좁은 데는 이유가 있다. 크면 영상 중간에 더 커져서 팔다리가 잘리고,
+# 작으면 Kling 이 몸통을 못 찾아 생성 자체를 거부한다. 이 파일 위쪽에 적어
+# 둔 대로 58% 가 아래쪽 한계다.
+#
+# 한 번 0.52 로 열었다가 생성이 실패했다 (fal 이 422 로 돌려줬다). 다시는
+# 58% 아래로 내리지 않는다.
+# (키 비율, 폭 한계). 둘을 같이 움직여야 고른 값이 실제로 달라진다.
+#
+# 키만 바꾸면 가로로 퍼진 캐릭터는 폭 한계(80%)에 먼저 걸려 보통과 크게가
+# 똑같아진다. 갈기 큰 사자로 재보니 58.0 / 58.8 / 58.8% 였다 — 골라도 안
+# 바뀐다는 말이 여기서 나왔다.
+#
+# 보통(0.62/0.80)은 지금까지 멀쩡히 돌아간 값이라 손대지 않는다.
+#
+# '작게'(49.9%) 도 보통(58.8%) 과 5%p 차이뿐이라 눈에 안 들어온다는 말이 있어
+# 한 칸 더 뒀다. 모델이 판을 얼마나 잘 따르는지 실제로 재보고 내린 결정이다:
+# 판 49.9% → 나온 그림 51.2% (1.3%p 차이). 예전에 Kling 이 거부한 건 23% 였고,
+# 그건 모델이 제멋대로 줄여 그리던 시절 이야기다.
+KEY_SIZES = {
+    "xs":    (0.45, 0.58),
+    "small": (0.52, 0.68),
+    "mid":   (0.62, 0.80),
+    "big":   (0.72, 0.90),
+}
 
 
 LAYOUT_LOCK = (
@@ -364,11 +450,19 @@ DEFAULT_POSE = ("Pose: standing upright facing the camera in a relaxed ready sta
 
 # 장소 사진을 주면 그 장소를 그대로 옮겨 그린다. 사진을 일러스트로 바꾸는 셈이라
 # 실제 캠퍼스·건물처럼 알아볼 수 있는 배경이 나온다.
+# 엔딩 배경을 따로 안 고른 경우. "비슷한 곳" 으로는 부족하다 — 2번 배경과
+# 미묘하게 다른 장소가 나온다는 말이 있었다. **같은 장면의 1초 뒤**라고
+# 못박고, 바꿔도 되는 것을 딱 하나(표지판)로 못 박는다.
 BG_KEEP = (
-    "The FIRST reference image already shows this character standing in its scene. Reuse THAT "
-    "background: the same location, architecture, ground surface, plants, props, colour palette, "
-    "weather and time of day, seen from a similar viewpoint, so both pictures read as the same "
-    "place at the same moment. Only the framing changes to make room for the sign. ")
+    "IMPORTANT - SAME PLACE, SAME MOMENT: the FIRST reference image already shows this character "
+    "standing in its scene. This new picture is the SAME shot a second later, taken from the same "
+    "spot with the same lens. Copy that background exactly: the same buildings with the same "
+    "shapes, windows and colours, the same ground surface and its pattern, the same plants, the "
+    "same sky and clouds, the same weather, the same time of day, the same direction of light and "
+    "the same depth of field. Do not move to another spot, do not change the viewpoint, the "
+    "distance or the horizon, do not redesign or redecorate anything, and do not invent objects "
+    "that are not already there. The ONLY change is that a sign now stands in this scene, and the "
+    "framing shifts just enough to fit it in. ")
 
 PLACE_REF = (
     "The SECOND reference image is a photo the user chose for the setting. First look at it and "
@@ -386,7 +480,7 @@ PLACE_REF = (
 
 
 def keycut(char_path, bg_prompt, out_path, pose=None, place_photo=None, style_mode="3d",
-           feedback=None):
+           feedback=None, size="mid"):
     """1) 캐릭터를 배경 안에 세운 한 장. 이게 Kling 의 입력이 된다.
 
     place_photo 를 주면 그 장소를 재현한다. 글로만 적는 것보다 훨씬 정확하다.
@@ -396,12 +490,16 @@ def keycut(char_path, bg_prompt, out_path, pose=None, place_photo=None, style_mo
     tmp = tempfile.mkdtemp()
     try:
         st, li = mode_of(style_mode)
-        plate = layout_plate(char_path, os.path.join(tmp, "plate.png"))
+        ratio, wide = KEY_SIZES.get(size) or KEY_SIZES["mid"]
+        # 판이 실제로 올린 비율을 받아 글에도 같은 숫자를 쓴다. 둘이 어긋나면
+        # 모델이 그 사이에서 갈팡질팡한다.
+        plate, got = layout_plate(char_path, os.path.join(tmp, "plate.png"),
+                                  ratio=ratio, wide=wide)
         imgs = [plate] + ([place_photo] if place_photo else [])
         prompt = LAYOUT_LOCK + (pose or DEFAULT_POSE) + st + EMPTY_HANDS + scene
         if place_photo:
             prompt += PLACE_REF
-        return _nb(prompt + li + FRAMING + fix_note(feedback), imgs, out_path, tmp)
+        return _nb(prompt + li + framing(got) + fix_note(feedback), imgs, out_path, tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -541,7 +639,9 @@ def poster_scene(key_path, bg_prompt, out_path, kind="wall", pose="point", scene
             body = POSTER_SCENE % (k, ps)
         where = (scene or bg_prompt or "").strip().rstrip(".")
         extra = ("The surroundings match this setting: %s. " % where) if where else ""
-        imgs = [key_path, key_path] if not place_photo else [key_path, place_photo]
+        # 사진이 없으면 키컷 한 장만 보낸다. 같은 그림을 두 번 보내면 모델이
+        # 서로 다른 참고 자료로 보고 둘을 섞으려 든다.
+        imgs = [key_path, place_photo] if place_photo else [key_path]
         if place_photo:
             extra += PLACE_REF
         elif not (scene or "").strip():
@@ -571,7 +671,7 @@ def poster_video(still, out_path, sec=4, baked=False):
         r = retry(lambda: fal.subscribe("bytedance/seedance-2.0/fast/image-to-video", arguments={
             "prompt": LOCKED_BAKED if baked else LOCKED,
             "image_url": fal.upload_file(_ascii_copy(still, tmp, "poster.png")),
-            "resolution": "480p", "duration": str(int(sec)), "generate_audio": False,
+            "resolution": POSTER_VID_RES, "duration": str(int(sec)), "generate_audio": False,
         }, with_logs=False))
         urllib.request.urlretrieve(r["video"]["url"], out_path)
         return out_path
@@ -687,8 +787,8 @@ def _poster_art(w, h, lines, accent=None, bg=None, ink=None, font=None, bar=True
     ac = _hex(accent, "#E8B22E")
     bgc = _hex(bg, "#FCFAF5")
     ic = _hex(ink, "#26221C")
-    fb = font or FONT_B
-    fr = font or FONT_R
+    # font 는 **글꼴 이름**이다 (경로가 아니다). 경로만 받으면 가변 글꼴의
+    # 굵기를 못 살려서 Light 든 Black 이든 같은 모양으로 그려졌다.
     im = Image.new("RGB", (w, h), bgc)
     d = ImageDraw.Draw(im)
     if bar:
@@ -723,13 +823,10 @@ def _poster_art(w, h, lines, accent=None, bg=None, ink=None, font=None, bar=True
                 done.append(ln)
         return done
 
-    def load(path, size):
-        try:
-            return ImageFont.truetype(path, size), path
-        except OSError:
-            return ImageFont.truetype(FONT_B, size), FONT_B
+    def load(bold, size):
+        return font_of(font, size, bold=bold), bold
 
-    def fit(path, txt, size, max_lines):
+    def fit(bold, txt, size, max_lines):
         """줄바꿈까지 해서 max_lines 안에 들어가는 글꼴과 줄 목록.
 
         전에는 8px 까지 줄이기만 해서, 제목이 길면 그래도 안 들어가 포스터
@@ -738,17 +835,20 @@ def _poster_art(w, h, lines, accent=None, bg=None, ink=None, font=None, bar=True
         one = max(10, int(size * .72))     # 한 줄로 담으려고 줄일 수 있는 한계
         s = size
         while s >= one:
-            f, path = load(path, s)
+            f, bold = load(bold, s)
             if len(wrap(txt, f)) <= 1:
                 return f, [txt]
             s = int(s * .96)
         floor = max(10, int(size * .5))
         s = size
         while True:
-            f, path = load(path, s)
+            f, bold = load(bold, s)
             ls = wrap(txt, f)
+            # 넘치는 줄도 **버리지 않고** 다 돌려준다. 전에는 ls[:max_lines] 로
+            # 잘라내서, 표지판이 세로로 길면 적어둔 글자가 통째로 사라졌다.
+            # 다 안 들어가면 바깥에서 글자 기준 크기를 줄여 다시 짠다.
             if len(ls) <= max_lines or s <= floor:
-                return f, ls[:max_lines]
+                return f, ls
             s = int(s * .92)
 
     def block(ls, f, top, fill):
@@ -761,26 +861,47 @@ def _poster_art(w, h, lines, accent=None, bg=None, ink=None, font=None, bar=True
         return y
 
     l1, l2, l3 = (list(lines) + ["", "", ""])[:3]
-    f1, ls1 = fit(fb, l1, int(h * .095), 2) if l1 else (None, [])
-    f2, ls2 = fit(fb, l2, int(h * .135), 2) if l2 else (None, [])
-    h1 = len(ls1) * int(f1.size * 1.22) if ls1 else 0
-    h2 = len(ls2) * int(f2.size * 1.22) if ls2 else 0
-    gap = int(h * .05) if (ls1 and ls2) else 0
-    # 위 블록(제목·날짜)은 0.28h~0.61h 안에서 세로 가운데에 놓는다.
-    top = int(h * .28) + max(0, (int(h * .33) - (h1 + gap + h2)) // 2)
-    if ls1:
-        top = block(ls1, f1, top, ic) + gap
-    if ls2:
-        top = block(ls2, f2, top, ac)
-    # 줄이 늘어나면 글자가 구분선을 뚫고 나간다. 선을 글자 아래로 밀어 둔다.
-    div = max(int(h * .63), top + int(h * .025))
-    d.line([int(w * .22), div, int(w * .78), div],
+
+    def plan(base):
+        """글자 기준 크기 base 로 짰을 때의 배치. 다 못 담으면 fits=False."""
+        f1, ls1 = fit(True, l1, int(base * .095), 2) if l1 else (None, [])
+        f2, ls2 = fit(True, l2, int(base * .135), 2) if l2 else (None, [])
+        f3, ls3 = fit(False, l3, int(base * .065), 2) if l3 else (None, [])
+        lh = lambda f, ls: len(ls) * int(f.size * 1.22) if ls else 0
+        h1, h2, h3 = lh(f1, ls1), lh(f2, ls2), lh(f3, ls3)
+        gap = int(base * .05) if (ls1 and ls2) else 0
+        # 위 블록(제목·강조줄)은 0.28h~0.61h 안에서 세로 가운데에 놓는다.
+        top0 = int(h * .28) + max(0, (int(h * .33) - (h1 + gap + h2)) // 2)
+        after = top0 + h1 + (gap if ls1 else 0) + h2
+        # 줄이 늘어나면 글자가 구분선을 뚫고 나간다. 선을 글자 아래로 밀어 둔다.
+        div = max(int(h * .63), after + int(h * .025))
+        y3 = div + int(h * .03)
+        room = h - int(h * .06) - y3
+        fits = (top0 >= int(h * .17)) and (y3 + h3 <= h - int(h * .04))
+        return dict(f1=f1, ls1=ls1, f2=f2, ls2=ls2, f3=f3, ls3=ls3,
+                    gap=gap, top0=top0, div=div, y3=y3, h3=h3, room=room, fits=fits)
+
+    # 글자 크기의 기준. 높이만 보면 표지판이 세로로 길 때 글자가 폭을 넘쳐
+    # 줄이 자꾸 늘어난다. 3:4 보다 좁으면 폭을 기준으로 잡는다.
+    # (미리보기 900x1200 은 3:4 라서 예전과 똑같이 h 가 기준이 된다)
+    base = min(h, int(w * 4 / 3))
+    pl_ = plan(base)
+    for _ in range(14):                 # 다 안 들어가면 통째로 줄여 다시 짠다
+        if pl_["fits"] or base <= h * .3:
+            break
+        base = int(base * .92)
+        pl_ = plan(base)
+
+    top = pl_["top0"]
+    if pl_["ls1"]:
+        top = block(pl_["ls1"], pl_["f1"], top, ic) + pl_["gap"]
+    if pl_["ls2"]:
+        block(pl_["ls2"], pl_["f2"], top, ac)
+    d.line([int(w * .22), pl_["div"], int(w * .78), pl_["div"]],
            fill=(218, 212, 200), width=max(2, h // 260))
-    if l3:
-        f3, ls3 = fit(fr, l3, int(h * .065), 2)
-        h3 = len(ls3) * int(f3.size * 1.22)
-        room = h - int(h * .06) - (div + int(h * .03))
-        block(ls3, f3, div + int(h * .03) + max(0, (room - h3) // 2), ic)
+    if pl_["ls3"]:
+        block(pl_["ls3"], pl_["f3"],
+              pl_["y3"] + max(0, (pl_["room"] - pl_["h3"]) // 2), ic)
     return im
 
 
@@ -1110,6 +1231,14 @@ _FONT_CACHE = []
 
 
 FONT_CACHE_FILE = Path(__file__).parent / "fonts_cache.json"
+# 이름 -> {"path": 글꼴파일, "var": 가변글꼴 안의 굵기 이름}
+#
+# 목록을 만드는 쪽(system_fonts)과 파일을 찾는 쪽이 **서로 다른 규칙**을 쓰고
+# 있었다. 목록은 가변 글꼴 파일 안의 굵기까지 꺼내 쓰는데("Gothic A1 Black"),
+# 파일 찾기는 이름표만 보니 그런 이름은 못 찾고 조용히 기본 글꼴로 떨어졌다.
+# 그래서 글꼴을 바꿔도 포스터가 그대로였다. 훑을 때 지도도 같이 만든다.
+FONT_MAP_FILE = Path(__file__).parent / "fonts_map.json"
+_FONT_MAP = {}
 
 
 def _is_ko(n):
@@ -1139,7 +1268,10 @@ def system_fonts(rescan=False):
     글꼴 파일을 열어 한글 글리프가 들어 있는지 직접 확인한다.
     훑는 데 10초쯤 걸려서 결과를 파일에 저장해둔다.
     """
-    if _FONT_CACHE:
+    if rescan:
+        _FONT_CACHE.clear()
+        _FONT_MAP.clear()
+    elif _FONT_CACHE:
         return list(_FONT_CACHE)
     if not rescan and FONT_CACHE_FILE.exists():
         try:
@@ -1174,7 +1306,7 @@ def system_fonts(rescan=False):
     def instances(f, base):
         """가변 글꼴은 파일 하나에 굵기가 다 들어 있다(Noto Sans KR Light/Thin/…).
         내부 목록을 읽어야 굵기별로 고를 수 있다."""
-        out = set()
+        out = []
         try:
             if "fvar" not in f:
                 return out
@@ -1186,7 +1318,9 @@ def system_fonts(rescan=False):
                 sub = r.toUnicode().strip()
                 if not sub or sub.lower() in ("regular", "normal"):
                     continue
-                out.add("%s %s" % (base, sub))
+                # 굵기 이름도 같이 돌려준다. PIL 로 그릴 때 이게 있어야
+                # 같은 파일에서 Light 와 Black 을 구분해 그릴 수 있다.
+                out.append(("%s %s" % (base, sub), sub))
         except Exception:
             pass
         return out
@@ -1211,12 +1345,20 @@ def system_fonts(rescan=False):
                 try:
                     fonts = (TTCollection(path).fonts if path.lower().endswith(".ttc")
                              else [TTFont(path, lazy=True, fontNumber=0)])
-                    for f in fonts:
+                    # 묶음 파일(.ttc)은 한 파일에 글꼴이 여러 개 들어 있다.
+                    # 몇 번째인지 적어두지 않으면 늘 첫 번째만 열려서
+                    # 굴림·굴림체·돋움이 전부 같은 모양으로 그려진다.
+                    for idx, f in enumerate(fonts):
                         if korean(f):
                             n = _pick_name(*families(f))
                             if n:
                                 picked.add(n)
-                                picked |= instances(f, n)
+                                _FONT_MAP.setdefault(n, {"path": path, "var": None,
+                                                         "idx": idx})
+                                for nm, sub in instances(f, n):
+                                    picked.add(nm)
+                                    _FONT_MAP.setdefault(nm, {"path": path, "var": sub,
+                                                              "idx": idx})
                 except Exception:
                     pass
     names = sorted(picked)
@@ -1227,8 +1369,10 @@ def system_fonts(rescan=False):
         import json
         FONT_CACHE_FILE.write_text(json.dumps(_FONT_CACHE, ensure_ascii=False),
                                    encoding="utf-8")
+        FONT_MAP_FILE.write_text(json.dumps(_FONT_MAP, ensure_ascii=False),
+                                 encoding="utf-8")
     except Exception:
-        pass
+        pass        # 람다는 읽기 전용이라 못 적는다. 메모리에 들고 쓰면 된다.
     return list(_FONT_CACHE) or list(SUB_FONTS_FALLBACK)
 
 
@@ -1332,8 +1476,86 @@ def burn_subs(video, subs, out_path, w=720, h=1280, **style):
 _FONT_FILE_CACHE = {}
 
 
+FONT_SHEET_W = 440          # 견본 한 줄의 너비
+FONT_SHEET_ROW = 46         # 견본 한 줄의 높이
+
+
+def font_sheet(names, out_path, sample="다람쥐 헌 쳇바퀴에 타고파"):
+    """글꼴 목록을 **실제로 그려서** 한 장에 쌓는다.
+
+    화면은 글꼴 이름만 알 뿐 그 글꼴 파일은 없다. CSS 로 미리보기를 하면
+    브라우저에 없는 글꼴이라 전부 기본 글꼴로 떨어져, 72개가 똑같아 보였다.
+    서버가 그려서 보내면 고르기 전에 진짜 모양을 볼 수 있다.
+
+    목록(system_fonts)과 **같은 순서**로 쌓는다. 화면은 몇 번째 줄인지로 찾는다.
+    """
+    W, R = FONT_SHEET_W, FONT_SHEET_ROW
+    im = Image.new("RGB", (W, R * max(1, len(names))), (255, 255, 255))
+    d = ImageDraw.Draw(im)
+    for i, nm in enumerate(names):
+        size = 26
+        while True:
+            f = font_of(nm, size, bold=False)
+            bb = d.textbbox((0, 0), sample, font=f)
+            if bb[2] - bb[0] <= W - 20 or size <= 11:
+                break
+            size -= 1
+        y = i * R + (R - (bb[3] - bb[1])) // 2 - bb[1]
+        d.text((10, y), sample, font=f, fill=(38, 34, 28))
+    im.save(str(out_path))
+    return out_path
+
+
+def _font_map():
+    """이름 -> 글꼴 파일 지도. 없으면 한 번 훑어서 만든다."""
+    if _FONT_MAP:
+        return _FONT_MAP
+    try:
+        import json
+        if FONT_MAP_FILE.exists():
+            got = json.loads(FONT_MAP_FILE.read_text(encoding="utf-8"))
+            # 지도에는 **그 컴퓨터의 파일 경로**가 들어 있다. 다른 데서 만든
+            # 것을 물려받으면 경로가 하나도 안 맞아 전부 기본 글꼴로 떨어진다.
+            # 몇 개만 찍어 보고 없으면 통째로 버린다.
+            if got and any(os.path.exists(e.get("path", ""))
+                           for e in list(got.values())[:5]):
+                _FONT_MAP.update(got)
+    except Exception:
+        pass
+    if not _FONT_MAP:
+        system_fonts(rescan=True)      # 목록과 지도를 같이 만든다
+    return _FONT_MAP
+
+
+def font_of(name, size, bold=True):
+    """글꼴 이름으로 PIL 글꼴을 연다.
+
+    가변 글꼴은 파일 하나에 굵기가 다 들어 있어서, 파일만 열면 늘 기본 굵기로
+    그려진다. 지도에 적어둔 굵기 이름을 입혀야 Light 와 Black 이 달라진다.
+    """
+    fallback = FONT_B if bold else FONT_R
+    e = _font_map().get(name) if name else None
+    if not e:
+        return ImageFont.truetype(fallback, size)
+    try:
+        f = ImageFont.truetype(e["path"], size, index=e.get("idx", 0))
+    except Exception as err:
+        # 조용히 기본 글꼴로 떨어지면 "글꼴을 바꿔도 안 바뀐다" 로만 보인다.
+        print("글꼴 열기 실패: %s (%s) %s" % (name, e.get("path"), err))
+        return ImageFont.truetype(fallback, size)
+    if e.get("var"):
+        try:
+            f.set_variation_by_name(e["var"])
+        except Exception as err:
+            print("굵기 적용 실패: %s / %s - %s" % (name, e.get("var"), err))
+    return f
+
+
 def font_file(family):
-    """글꼴 이름으로 파일 경로를 찾는다. 포스터 글자는 PIL 로 그려서 파일이 필요하다."""
+    """글꼴 이름으로 파일 경로를 찾는다 (옛 이름). 지도에서 꺼내 쓴다."""
+    e = _font_map().get(family) if family else None
+    if e:
+        return e["path"]
     if not family:
         return None
     if family in _FONT_FILE_CACHE:

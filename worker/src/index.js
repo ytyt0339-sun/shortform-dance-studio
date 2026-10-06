@@ -10,7 +10,8 @@
 import * as fal from "./fal.js";
 import { invoke } from "./lambda.js";
 import { linkOk, tempLink } from "./sign.js";
-import { scoreCheck, setEndingOptions, setOptions, setSubs, STYLE_MODES } from "./settings.js";
+import { KEY_SIZES, scoreCheck, setEndingOptions, setOptions, setSubs,
+         STYLE_MODES } from "./settings.js";
 import {
   blankJob, dropJob, indexAdd, indexDrop, key, listJobs,
   ownedJob, readJob, readTask, writeJob, writeTask,
@@ -109,10 +110,16 @@ async function quotaLeft(env, who, ip) {
 
 // ── 람다에 일 넘기기 ─────────────────────────────────────────────────────
 // 진행 상황은 람다가 R2 의 task.json 에 적는다. 화면은 그 파일을 본다.
-async function runOp(env, jid, label, op, params = {}, wait = false) {
+// need 를 주면 람다가 저장소에서 **그 파일들만** 받는다. 자막·카메라만 다시
+// 입히는 일에 춤 영상 원본과 키컷까지 받으면(170MB) 받는 데만 한참 걸린다.
+async function runOp(env, jid, label, op, params = {}, wait = false, need = null) {
   const t = await readTask(env, jid);
   if (t.state === "running" && Date.now() / 1000 - (t.started || 0) < 25 * 60) {
-    return oops("이미 다른 작업이 진행 중입니다.", 409);
+    // 무엇이 얼마나 돌고 있는지 말해 준다. "이미 다른 작업이 진행 중" 만으로는
+    // 눈에 보이는 작업이 없을 때 뭘 기다려야 하는지 알 수가 없다.
+    const sec = Math.round(Date.now() / 1000 - (t.started || 0));
+    return oops(`"${t.label || "다른 작업"}" 이(가) 아직 돌고 있습니다 ` +
+                `(${sec}초째). 끝나면 다시 눌러주세요.`, 409);
   }
   const started = Date.now() / 1000;
   await writeTask(env, jid, {
@@ -121,7 +128,8 @@ async function runOp(env, jid, label, op, params = {}, wait = false) {
   try {
     // 시작 시각을 같이 보낸다. 람다가 진행 상황을 적을 때 이 값을 그대로 달아야
     // 화면의 "몇 초 지남" 이 0 으로 되돌아가지 않는다.
-    const out = await invoke(env, { op, jid, params, label, started }, wait);
+    const out = await invoke(env, { op, jid, params, label, started,
+                                   ...(need ? { need } : {}) }, wait);
     if (wait) {
       await writeTask(env, jid, { state: "done", at: Date.now() / 1000 });
       return json(out.job || {});
@@ -132,6 +140,9 @@ async function runOp(env, jid, label, op, params = {}, wait = false) {
     return oops(String(e.message || e), 500);
   }
 }
+
+// 자막·카메라만 다시 입힐 때 람다가 받아야 하는 파일. 이것만 있으면 된다.
+const LOOK_FILES = ["job.json", "final_raw.mp4", "final_cam.mp4", "final.mp4"];
 
 // ── 길 안내 ──────────────────────────────────────────────────────────────
 async function route(request, env, ctx, who, ip) {
@@ -178,6 +189,22 @@ async function route(request, env, ctx, who, ip) {
 
   // 화면이 "내가 최신인가" 물어보는 자리. 올릴 때마다 값이 바뀐다.
   if (path === "/api/version") return json({ page_mtime: Number(env.BUILT_AT || 0) });
+
+  // 글꼴 견본 그림. 목록과 같은 순서로 쌓여 있어 화면이 줄 번호로 찾아 쓴다.
+  // 브라우저에는 그 글꼴들이 없어서 CSS 로는 미리보기가 안 된다 (전부 기본
+  // 글꼴로 떨어져 72개가 똑같아 보였다). 서버가 그린 것을 그대로 보여준다.
+  if (path === "/api/fontsheet") {
+    const KEY = key("_lists", "fontsheet.png");
+    const serve = (body) => new Response(body, {
+      headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" },
+    });
+    const got = await env.FILES.get(KEY);
+    if (got) return serve(got.body);
+    await invoke(env, { op: "font_sheet", jid: "_lists" }, true);
+    const made = await env.FILES.get(KEY);
+    if (!made) return oops("글꼴 미리보기를 만들지 못했습니다.", 500);
+    return serve(made.body);
+  }
 
   // 고를 수 있는 글꼴과 선택지. 잘 안 바뀌므로 하루 동안 기억해 둔다.
   if (path === "/api/fonts") {
@@ -304,7 +331,7 @@ async function route(request, env, ctx, who, ip) {
     const s = (k, d = "") => String(form.get(k) ?? d);
 
     if (rest === "character/cleanup") {
-      return runOp(env, jid, "그림 다듬기", "clean_character",
+      return runOp(env, jid, "다시 그리기", "clean_character",
                    { feedback: s("feedback") });
     }
     if (rest === "character/stand") {
@@ -317,7 +344,9 @@ async function route(request, env, ctx, who, ip) {
     }
     if (rest === "keycut") {
       return runOp(env, jid, "키컷 만들기", "make_keycut",
-                   { bg_prompt: s("bg_prompt"), feedback: s("feedback") });
+                   { bg_prompt: s("bg_prompt"), feedback: s("feedback"),
+                     // 크기는 글로 적어도 안 먹는다. 고른 값을 그대로 넘긴다.
+                     size: KEY_SIZES.includes(s("size")) ? s("size") : null });
     }
     if (rest === "reference/scan") {
       return runOp(env, jid, "좋은 구간 찾기", "scan_segments");
@@ -330,6 +359,16 @@ async function route(request, env, ctx, who, ip) {
     }
     if (rest === "ending") {
       return runOp(env, jid, "엔딩 만들기", "build_ending");
+    }
+    // 이미 만든 춤 영상에 엔딩만 다시 이어붙인다. 생성이 아니라 이어붙이기라
+    // 공짜다 — 춤 영상을 다시 뽑으면 8~12분에 3,400원이 또 나간다.
+    //
+    // 엔딩을 나중에 만든 사람에게 이 길이 없어서, 멀쩡한 영상을 두고 처음부터
+    // 다시 만드는 수밖에 없었다.
+    if (rest === "rejoin") {
+      if (!(job.cuts || []).length) return oops("먼저 영상을 만들어주세요.");
+      if (!job.ending) return oops("붙일 엔딩이 아직 없습니다. 5번에서 엔딩 영상을 먼저 만들어 주세요.");
+      return runOp(env, jid, "엔딩 이어붙이기", "finish_up", { want_ending: true });
     }
     if (rest === "render") {
       return startRender(env, url, jid, job, who, ip, s("with_ending", "true") === "true");
@@ -353,8 +392,13 @@ async function route(request, env, ctx, who, ip) {
     if (rest === "poster") {
       job.poster = [s("l1"), s("l2"), s("l3")].map((x) => x.trim());
       await writeJob(env, jid, job);
-      // 이미 만들어둔 엔딩이 있으면 글자만 다시 얹는다 (무료)
-      if (job.ending_raw || job.ending_still) {
+      // 이미 만들어둔 엔딩이 있으면 글자만 다시 얹는다 (무료).
+      //
+      // apply=false 는 "글자만 적어 두고 아무것도 돌리지 마라" 다. 장면을
+      // 통째로 다시 만들 사람은 이쪽을 쓴다 — 어차피 새로 그릴 그림에
+      // 글자를 얹느라 작업을 하나 띄우면, 바로 뒤에 오는 진짜 작업이
+      // "이미 다른 작업이 진행 중" 으로 막힌다.
+      if ((job.ending_raw || job.ending_still) && s("apply", "true") === "true") {
         return runOp(env, jid, "포스터 문구 반영", "apply_poster_text");
       }
       return json(job);
@@ -364,12 +408,14 @@ async function route(request, env, ctx, who, ip) {
       if (out.error) return oops(out.error);
       await writeJob(env, jid, out.job);
       // 이미 만든 영상이 있으면 자막만 다시 굽는다 (무료)
-      if (out.job.result) return runOp(env, jid, "자막 반영", "apply_subs");
+      if (out.job.result) {
+        return runOp(env, jid, "자막 반영", "apply_subs", {}, false, LOOK_FILES);
+      }
       return json(out.job);
     }
     if (rest === "subtitles/restyle") {
       if (!job.result) return oops("먼저 영상을 만들어주세요.");
-      return runOp(env, jid, "모양 반영", "apply_subs");
+      return runOp(env, jid, "모양 반영", "apply_subs", {}, false, LOOK_FILES);
     }
     if (rest === "ending/still") return runOp(env, jid, "엔딩 장면 만들기", "make_still");
     if (rest === "ending/video") return runOp(env, jid, "엔딩 영상 만들기", "build_ending");
@@ -377,11 +423,15 @@ async function route(request, env, ctx, who, ip) {
 
   // 얼마나 드는지 미리 보여주기 (화면의 '만들기' 옆 안내)
   if (rest === "estimate") {
-    const CUT_SEC = 6, NB = 0.08, POSTER_VID = 0.54;
+    const CUT_SEC = 6, NB = 0.08;
+    // 엔딩 영상 값은 크기와 길이로 매겨진다 — 1000토큰당 $0.0112, 토큰은
+    // (가로 x 세로 x 초 x 24) / 1024. 720p 로 뽑으므로 720x1280 이다.
+    // 파이썬의 poster_vid_price 와 **같은 식**을 쓴다.
+    const posterVid = (sec) => 720 * 1280 * sec * 24 / 1024 * 0.0112 / 1000;
     const n = job.segments || 0;
     const secs = job.one_shot === false ? n * CUT_SEC : (job.clip_dur || n * CUT_SEC);
     const dance = Math.round(secs * fal.PRICE_PER_SEC * 100) / 100;
-    const ending = Math.round((NB + POSTER_VID) * 100) / 100;
+    const ending = Math.round((NB + posterVid(job.ending_sec || 4)) * 100) / 100;
     return json({ segments: n, seconds: Math.round(secs), one_shot: job.one_shot !== false,
                   dance, ending, total: Math.round((dance + ending) * 100) / 100 });
   }
@@ -449,8 +499,9 @@ async function startRender(env, url, jid, job, who, ip, wantEnding) {
     ]);
     const got = await fal.submit(env, img, vid);
     job.render_n = (job.render_n || 0) + 1;
+    const startedAt = Date.now() / 1000;
     job.pending = {
-      stage: "cuts", want_ending: wantEnding,
+      stage: "cuts", want_ending: wantEnding, started: startedAt,
       // 확인 주소도 같이 적어 둔다. 주소를 지어내면 확인이 안 된다.
       reqs: [{ ...got, out: "cuts/full.mp4", done: false }],
     };
@@ -459,7 +510,7 @@ async function startRender(env, url, jid, job, who, ip, wantEnding) {
     await writeTask(env, jid, {
       state: "waiting", label: "영상 만들기", done: 0, total: 1,
       msg: "춤 영상 만드는 중 (8~12분) — 창을 닫아도 계속됩니다",
-      started: Date.now() / 1000,
+      started: startedAt,
     });
     return json(await readTask(env, jid));
   } catch (e) {
@@ -497,8 +548,13 @@ async function checkPending(env) {
       job.cuts = p.reqs.map((r) => r.out);
       await writeJob(env, jid, job);
       const done = p.reqs.filter((r) => r.done).length;
-      await writeTask(env, jid, { state: "waiting", label: "영상 만들기",
-                                  done, total: p.reqs.length, started: Date.now() / 1000 });
+      // 시작 시각은 처음 맡길 때 적은 것을 그대로 쓴다. 여기서 지금 시각으로
+      // 덮어쓰면 1분마다 "0초 경과"로 돌아가 버린다.
+      await writeTask(env, jid, {
+        state: "waiting", label: "영상 만들기", done, total: p.reqs.length,
+        msg: "춤 영상 만드는 중 (8~12분) — 창을 닫아도 계속됩니다",
+        started: p.started || Date.now() / 1000,
+      });
       if (!allDone) continue;
 
       // 남은 일(엔딩·합치기·자막)은 람다가 한다. 몇 십 초 걸린다.
@@ -514,6 +570,13 @@ async function checkPending(env) {
       await env.COUNTS.delete(k.name);
       const job = await readJob(env, jid);
       if (job) {                       // 실패는 쓴 것으로 치지 않는다
+        // 실패한 요청 번호는 남겨 둔다. pending 을 지워 버리면 나중에 fal 에
+        // "그 건 왜 실패했냐" 고 물어볼 수가 없다 (실제로 못 물어본 적이 있다).
+        job.last_fail = {
+          at: new Date().toISOString().slice(0, 19).replace("T", " "),
+          why: String(e.message || e).slice(0, 400),
+          reqs: (job.pending?.reqs || []).map((r) => r.id),
+        };
         job.pending = null;
         job.render_n = Math.max(0, (job.render_n || 1) - 1);
         await writeJob(env, jid, job);

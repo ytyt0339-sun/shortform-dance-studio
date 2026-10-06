@@ -1153,7 +1153,7 @@ def estimate(jid: str):
     if not job.get("one_shot", True):
         secs = n * pl.CUT_SEC
     dance = round(secs * vd.PRICE_PER_SEC, 2)
-    ending = round(pl.NB_PRICE + pl.POSTER_VID_PRICE, 2)
+    ending = round(pl.NB_PRICE + pl.poster_vid_price(job.get("ending_sec", 4)), 2)
     return {"segments": n, "seconds": round(secs), "one_shot": job.get("one_shot", True),
             "dance": dance,
             "ending": ending, "total": round(dance + ending, 2)}

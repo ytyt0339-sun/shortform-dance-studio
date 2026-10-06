@@ -2,6 +2,9 @@
 # 깨진 파일 하나로 들어가서, 안에서 글꼴을 받으려 할 때 막힌다. 아예 뺀다.
 app/fonts
 app/fonts_cache.json
+# 글꼴 지도도 **그 컴퓨터에서만** 맞는 파일 경로다. 이미지에 들어가면
+# 람다가 내 윈도우 글꼴 경로를 들고 돌게 된다.
+app/fonts_map.json
 
 # 시험하며 쌓인 작업 폴더
 app/studio_runs

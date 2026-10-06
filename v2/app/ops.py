@@ -11,6 +11,8 @@
 
 이 파일은 웹이나 세션을 모르고, 파일과 기록만 다룬다. 그래야 어디서든 돈다.
 """
+import hashlib
+import json
 import time
 from pathlib import Path
 
@@ -109,9 +111,10 @@ def pick_segment(d, j, t0, say=_quiet, app=None):
 
 
 def clean_character(d, j, feedback="", say=_quiet):
-    """손그림 낙서를 캐릭터로 다듬는다. 원본은 따로 남긴다.
+    """캐릭터를 지금 고른 화풍으로 다시 그린다. 원본은 따로 남긴다.
 
-    원본에서 다시 다듬으므로, 여러 번 눌러도 고친 내용이 쌓여 뭉개지지 않는다.
+    늘 올린 원본에서 다시 그리므로, 화풍을 바꿔 가며 몇 번을 눌러도 앞서 바꾼
+    그림체가 겹겹이 쌓여 뭉개지지 않는다.
     """
     d = Path(d)
     src = d / (j.get("character_raw") or j["character"])
@@ -121,12 +124,13 @@ def clean_character(d, j, feedback="", say=_quiet):
         j["character_raw"] = raw.name
         src = raw
 
-    say(msg="그림을 캐릭터로 다듬는 중")
+    say(msg="고른 화풍으로 다시 그리는 중")
     out = d / "character_clean.png"
-    pl.clean_sketch(str(src), str(out), feedback=feedback)
+    pl.clean_sketch(str(src), str(out),
+                    style_mode=j.get("style_mode", "3d"), feedback=feedback)
     j["char_feedback"] = (feedback or "").strip()
     j["character"] = out.name
-    j["character_stood"] = False      # 다듬기는 자세를 바꾸지 않는다
+    j["character_stood"] = False      # 세우기는 따로 한 번 더 눌러야 한다
     j["character_n"] = j.get("character_n", 0) + 1
     j["keycut"] = None
     j["keycut_approved"] = False
@@ -189,7 +193,7 @@ def stand_character(d, j, feedback="", say=_quiet):
     return j
 
 
-def make_keycut(d, j, bg_prompt="", feedback="", say=_quiet):
+def make_keycut(d, j, bg_prompt="", feedback="", size=None, say=_quiet):
     """'장면 안에 서 있는 캐릭터' 한 장을 만든다.
 
     이 한 장이 Kling 의 입력이 되고, 배경까지 그대로 영상에 실린다.
@@ -200,10 +204,13 @@ def make_keycut(d, j, bg_prompt="", feedback="", say=_quiet):
 
     say(msg="장면 안에 캐릭터를 그리는 중")
     photo = (d / j["bg_photo"]) if j.get("bg_photo") else None
+    # 크기는 수정사항(글)이 아니라 값으로 받는다. 판에 직접 박아야 먹는다.
+    if size in pl.KEY_SIZES:
+        j["keycut_size"] = size
     pl.keycut(str(d / j["character"]), bg_prompt, str(out),
               place_photo=(str(photo) if photo else None),
               style_mode=j.get("style_mode", "3d"),
-              feedback=feedback)
+              feedback=feedback, size=j.get("keycut_size", "mid"))
     j["bg_prompt"] = bg_prompt
     j["bg_feedback"] = (feedback or "").strip()
     j["keycut"] = out.name
@@ -232,7 +239,9 @@ def audio_for(d, job):
 
 def poster_design(j):
     return dict(accent=j.get("poster_accent"), bg=j.get("poster_bg"), ink=j.get("poster_ink"),
-                font=pl.font_file(j.get("poster_font")), bar=j.get("poster_bar", True))
+                # 이름 그대로 넘긴다. 경로로 바꿔 넘기면 가변 글꼴의 굵기를
+                # 잃어버려서 Light 와 Black 이 같은 모양으로 그려졌다.
+                font=j.get("poster_font") or None, bar=j.get("poster_bar", True))
 
 
 def poster_custom(d, j):
@@ -302,7 +311,8 @@ def build_ending(d, j, say=_quiet):
     pl.poster_video(str(src), str(d / "ending_raw.mp4"),
                     sec=j.get("ending_sec", 4), baked=bool(baked))
     j["ending_raw"] = "ending_raw.mp4"
-    j["spent"] = round(j.get("spent", 0) + pl.POSTER_VID_PRICE, 3)
+    # 값은 길이에 따라 달라진다. 4초와 8초가 두 배 차이다.
+    j["spent"] = round(j.get("spent", 0) + pl.poster_vid_price(j.get("ending_sec", 4)), 3)
 
     if baked:
         _sh.copy(str(d / "ending_raw.mp4"), str(d / "ending.mp4"))
@@ -315,30 +325,72 @@ def build_ending(d, j, say=_quiet):
     return j          # 만든 파일 이름은 j["ending"] 에 들어 있다
 
 
+def _sig(*parts):
+    """값들을 짧은 지문 하나로 만든다. 같은 값이면 같은 지문이 나온다."""
+    raw = json.dumps(parts, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()[:12]
+
+
+def _file_sig(p):
+    """파일 내용의 지문. 이름이나 시각이 아니라 알맹이를 본다."""
+    h = hashlib.md5()
+    with open(str(p), "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()[:12]
+
+
+def subs_design(j):
+    """자막 굽기에 영향을 주는 값만 모은다. 지문을 낼 때도 이걸 쓴다."""
+    return dict(style=j.get("subs_style", "soft"),
+                font=(j.get("subs_font") or None),
+                size=(j.get("subs_size") or None),
+                pos=j.get("subs_pos", "top"),
+                color=j.get("subs_color"),
+                outline_color=j.get("subs_outline_color"),
+                outline=j.get("subs_outline"),
+                bold=j.get("subs_bold"))
+
+
 def apply_subs(d, j, say=_quiet):
     """원본(final_raw)에 카메라 무빙과 자막을 입혀 최종본을 만든다.
 
-    생성이 아니라 후처리라서 몇 번이든 무료로 다시 할 수 있다.
-    카메라를 먼저 걸고 자막을 나중에 얹어야 자막이 같이 흔들리지 않는다.
+    생성이 아니라 후처리라 돈은 안 든다. 다만 **시간이 든다** — 카메라
+    무빙(zoompan)과 자막 굽기는 둘 다 영상을 통째로 다시 인코딩한다. 그래서
+    바뀐 것이 없으면 건너뛴다.
+
+    지문을 두 개 둔다. 카메라는 원본 영상과 카메라 값에만 달렸고, 자막은
+    거기에 자막 내용과 모양까지 더해진다. 앞이 그대로면 뒤만, 둘 다
+    그대로면 아무것도 다시 굽지 않는다.
     """
     import shutil as _sh
     d = Path(d)
     raw = d / "final_raw.mp4"
     cam = d / "final_cam.mp4"
-    pl.camera_move(raw, cam, j.get("camera", "normal"))
-    if j.get("subs_on") and j.get("subs"):
-        say(msg="자막 굽는 중")
-        pl.burn_subs(cam, j["subs"], d / "final.mp4",
-                     style=j.get("subs_style", "soft"),
-                     font=(j.get("subs_font") or None),
-                     size=(j.get("subs_size") or None),
-                     pos=j.get("subs_pos", "top"),
-                     color=j.get("subs_color"),
-                     outline_color=j.get("subs_outline_color"),
-                     outline=j.get("subs_outline"),
-                     bold=j.get("subs_bold"))
+    out = d / "final.mp4"
+
+    # "normal" 은 없는 값이라 늘 기본(sway)으로 떨어졌다. 고른 값을 그대로 쓴다.
+    camera = j.get("camera") or "sway"
+    cam_key = _sig("cam", camera, _file_sig(raw))
+    if j.get("cam_sig") == cam_key and cam.exists():
+        say(msg="카메라는 그대로 — 다시 안 입힘")
     else:
-        _sh.copy(str(cam), str(d / "final.mp4"))
+        say(msg="카메라 입히는 중")
+        pl.camera_move(raw, cam, camera)
+        j["cam_sig"] = cam_key
+
+    on = bool(j.get("subs_on") and j.get("subs"))
+    subs_key = _sig("subs", cam_key, on, j.get("subs"), subs_design(j))
+    if j.get("subs_sig") == subs_key and out.exists():
+        say(msg="자막도 그대로 — 다시 안 구움")
+    elif on:
+        say(msg="자막 굽는 중")
+        pl.burn_subs(cam, j["subs"], out, **subs_design(j))
+        j["subs_sig"] = subs_key
+    else:
+        _sh.copy(str(cam), str(out))
+        j["subs_sig"] = subs_key
+
     j["result"] = "final.mp4"
     return j
 
@@ -400,10 +452,24 @@ def poster_preview(d, j, say=_quiet):
     return j
 
 
+def font_sheet(d, j=None, say=_quiet):
+    """글꼴 견본 그림 한 장을 만든다. font_list 와 같은 순서로 쌓는다."""
+    pl.font_sheet(pl.system_fonts(), Path(d) / "fontsheet.png")
+    return j if j is not None else {}
+
+
 def font_list(d=None, j=None, say=_quiet):
     """화면이 고를 수 있는 글꼴과 선택지 목록. 서버가 가진 것을 그대로 알려준다."""
+    fonts = pl.system_fonts()
+    m = pl._font_map()
     return {
-        "fonts": pl.system_fonts(),
+        "fonts": fonts,
+        # 지도에서 못 찾는 이름. 비어 있어야 정상이다 — 하나라도 있으면 그
+        # 글꼴은 골라도 기본 글꼴로 그려진다 (전에 그래서 안 바뀌었다).
+        "unmapped": [n for n in fonts if n not in m],
+        # 지도에는 있는데 **실제로 안 열리는** 이름. 이것도 기본으로 떨어진다.
+        "broken": [n for n in fonts
+                   if n in m and getattr(pl.font_of(n, 24), "path", None) != m[n]["path"]],
         "poster_kinds": [{"id": k, "label": v["label"]} for k, v in pl.POSTER_KINDS.items()],
         "ending_poses": [{"id": k, "label": v["label"]} for k, v in pl.ENDING_POSES.items()],
         "styles": [{"id": k, "label": v["label"]} for k, v in pl.SUB_STYLES.items()],

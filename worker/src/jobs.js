@@ -38,9 +38,20 @@ export async function ownedJob(env, jid, who) {
 const listKey = (who) => `jobs:${who}`;
 
 export async function indexAdd(env, who, jid) {
-  const cur = JSON.parse((await env.COUNTS.get(listKey(who))) || "[]");
+  const cur = await readIndex(env, who);
   if (!cur.includes(jid)) cur.unshift(jid);
   await env.COUNTS.put(listKey(who), JSON.stringify(cur.slice(0, 50)));
+}
+
+// 목록이 깨져 있어도 작업을 못 만드는 일은 없어야 한다. 읽기가 실패하면
+// 빈 목록으로 보고 넘어간다 (작업 자체는 R2 에 따로 들어 있다).
+async function readIndex(env, who) {
+  try {
+    const v = JSON.parse((await env.COUNTS.get(listKey(who))) || "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function indexDrop(env, who, jid) {
@@ -49,17 +60,15 @@ export async function indexDrop(env, who, jid) {
 }
 
 export async function listJobs(env, who) {
-  const ids = JSON.parse((await env.COUNTS.get(listKey(who))) || "[]");
-  const out = [];
-  for (const jid of ids) {
-    const j = await readJob(env, jid);
-    if (!j || j.owner !== who) continue;        // 지워졌거나 남의 것
-    out.push({
+  const ids = await readIndex(env, who);
+  // 한 개씩 차례로 읽으면 50개일 때 R2 를 50번 기다린다. 한 번에 물어본다.
+  const got = await Promise.all(ids.map((jid) => readJob(env, jid).catch(() => null)));
+  return got
+    .filter((j) => j && j.owner === who)        // 지워졌거나 남의 것은 뺀다
+    .map((j) => ({
       id: j.id, title: j.title, created: j.created,
       result: Boolean(j.result), spent: j.spent || 0,
-    });
-  }
-  return out;
+    }));
 }
 
 // 작업 하나를 통째로 지운다 (R2 에 남은 파일까지)

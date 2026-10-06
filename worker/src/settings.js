@@ -8,6 +8,8 @@
 export const CAMERAS = ["none", "push", "sway", "sway_strong", "orbit", "punch", "handheld"];
 export const SUB_STYLES = ["soft", "bold", "serif"];
 export const STYLE_MODES = ["3d", "doodle", "real"];
+// 키컷에서 캐릭터가 차지할 크기. 파이썬의 KEY_SIZES 와 같은 값이어야 한다.
+export const KEY_SIZES = ["xs", "small", "mid", "big"];
 export const POSTER_KINDS = ["wall", "board", "banner", "frame"];
 export const ENDING_POSES = ["point", "wave", "open", "look"];
 
